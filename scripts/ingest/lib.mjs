@@ -27,6 +27,10 @@ export async function fetchWithRetry(url, { attempts = 3, timeoutMs = 60_000 } =
 export async function fetchJson(url, options) {
   const res = await fetchWithRetry(url, options);
   const text = await res.text();
+  const htmlTitle = text.match(/<title>([^<]+)<\/title>/i)?.[1]?.trim();
+  if (htmlTitle && /key/i.test(htmlTitle)) {
+    throw new Error(htmlTitle);
+  }
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -79,6 +83,25 @@ const ARCGIS_ORG =
 
 export function layerUrl(service, layer = 0) {
   return `${ARCGIS_ORG}/${service}/FeatureServer/${layer}`;
+}
+
+/**
+ * Publisher page for a hosted Feature Service. Open Baltimore Hub catalog
+ * search on the ArcGIS service name returns nothing, and Hub dataset pages
+ * 404 when the item is unlisted (`listed: false`). The ArcGIS item page is
+ * what FeatureServer.serviceItemId actually points at.
+ */
+export function publisherItemUrl(serviceItemId) {
+  if (!serviceItemId) return null;
+  return `https://www.arcgis.com/home/item.html?id=${encodeURIComponent(serviceItemId)}`;
+}
+
+export async function describeService(service) {
+  const { parsed } = await fetchJson(`${ARCGIS_ORG}/${service}/FeatureServer?f=json`);
+  return {
+    serviceItemId: parsed.serviceItemId ?? null,
+    serviceDescription: parsed.serviceDescription ?? "",
+  };
 }
 
 export async function describeLayer(service, layer = 0) {

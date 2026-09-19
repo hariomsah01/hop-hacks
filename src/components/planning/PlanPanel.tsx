@@ -7,8 +7,6 @@ import { SectionTitle } from "./Measures";
 interface PlanPanelProps {
   plan: OperatingPlan;
   onChange: (plan: OperatingPlan) => void;
-  proposed: { lng: number; lat: number };
-  referenceName: string | null;
   onResetPlan: () => void;
 }
 
@@ -43,7 +41,7 @@ function Field({
           {label}
         </label>
         <span className="text-xs font-semibold tabular-nums text-[var(--color-navy-800)]">
-          {value.toLocaleString()}
+          {value.toLocaleString("en-US")}
           <span className="ml-0.5 font-normal text-[var(--color-navy-400)]">{unit}</span>
         </span>
       </div>
@@ -70,8 +68,6 @@ function Field({
 export default function PlanPanel({
   plan,
   onChange,
-  proposed,
-  referenceName,
   onResetPlan,
 }: PlanPanelProps) {
   const set = (key: NumericPlanKey) => (value: number) =>
@@ -109,35 +105,10 @@ export default function PlanPanel({
         </button>
       </div>
 
-      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-        <p className="text-[11px] leading-snug text-amber-900">
-          Every value here is an <strong>assumption you choose</strong> for your
-          proposed pantry, not a measurement. None of it is applied to the
-          existing pantry: what that site can actually do is not published.
-        </p>
-      </div>
-
-      <section className="mb-4">
-        <SectionTitle>Sites</SectionTitle>
-        <div className="grid gap-2">
-          <div className="rounded-md bg-[var(--color-proposed-100)] px-2 py-1.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-proposed-600)]">
-              Your proposed pantry
-            </div>
-            <div className="font-mono text-[11px] tabular-nums text-[var(--color-navy-600)]">
-              {proposed.lat.toFixed(4)}, {proposed.lng.toFixed(4)}
-            </div>
-          </div>
-          <div className="rounded-md bg-[var(--color-reference-100)] px-2 py-1.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-reference-600)]">
-              Existing pantry, for comparison
-            </div>
-            <div className="text-[11px] text-[var(--color-navy-600)]">
-              {referenceName ?? "None selected — click a dot on the map"}
-            </div>
-          </div>
-        </div>
-      </section>
+      <p className="mb-3 text-[11px] leading-snug text-[var(--color-navy-400)]">
+        Assumptions for the proposed site. Each is labeled assumed in the
+        analysis.
+      </p>
 
       <section className="mb-4">
         <SectionTitle>Catchment</SectionTitle>
@@ -148,7 +119,7 @@ export default function PlanPanel({
           max={5000}
           step={100}
           unit=" m"
-          hint="Straight-line radius. Not a walking or driving time area."
+          hint="Straight-line radius, not travel time."
           onChange={set("catchmentRadiusMeters")}
         />
         <Field
@@ -158,7 +129,6 @@ export default function PlanPanel({
           max={6}
           step={0.1}
           unit=""
-          hint="Converts catchment population into households. All household figures scale with this."
           onChange={set("peoplePerHousehold")}
         />
       </section>
@@ -190,7 +160,6 @@ export default function PlanPanel({
           max={60}
           step={1}
           unit=" min"
-          hint="Volunteer time to serve one household visit."
           onChange={set("volunteerMinutesPerHousehold")}
         />
         <Field
@@ -200,7 +169,6 @@ export default function PlanPanel({
           max={500}
           step={5}
           unit=" hh/wk"
-          hint="Households reached by delivery, drawing on the same stock."
           onChange={set("deliveryCapacityHouseholdsPerWeek")}
         />
       </section>
@@ -232,7 +200,6 @@ export default function PlanPanel({
           max={120000}
           step={1000}
           unit=" lb"
-          hint="Intake above remaining storage is refused, not silently absorbed."
           onChange={set("storageCapacityPounds")}
         />
         <Field
@@ -257,6 +224,9 @@ export default function PlanPanel({
 
       <section className="mb-4">
         <SectionTitle>Budget</SectionTitle>
+        <p className="mb-1 text-[11px] leading-snug text-[var(--color-navy-400)]">
+          Costs are inputs. They are not inferred from the pin.
+        </p>
         <Field
           label="Fixed cost"
           value={plan.fixedCostPerMonth}
@@ -264,7 +234,6 @@ export default function PlanPanel({
           max={50000}
           step={250}
           unit=" $/mo"
-          hint="Rent and overhead are inputs. They are never inferred from the location."
           onChange={set("fixedCostPerMonth")}
         />
         <Field
@@ -279,10 +248,10 @@ export default function PlanPanel({
       </section>
 
       <section>
-        <SectionTitle>Assumed weekly participation</SectionTitle>
+        <SectionTitle>Weekly participation sweep</SectionTitle>
         <p className="mb-1 text-[11px] leading-snug text-[var(--color-navy-400)]">
-          Share of catchment households requesting food in a week. Nothing in
-          this build measures real participation, so all three values are run.
+          Share of catchment households requesting food. All three rates are
+          run; none is observed demand.
         </p>
         {(["low", "medium", "high"] as const).map((key) => (
           <Field

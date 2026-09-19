@@ -38,6 +38,7 @@ body {
 body {
   background: var(--color-canvas);
   color: var(--color-navy-800);
+  font-feature-settings: "tnum" 1;
   font-family:
     ui-sans-serif,
     system-ui,
