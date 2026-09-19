@@ -385,7 +385,10 @@ export default function PantryTwinApp() {
           aria-labelledby="view-tab-analytics"
           className="min-h-0 flex-1"
         >
-          <AnalyticsView />
+          <AnalyticsView
+            proposed={proposed}
+            catchmentRadiusMeters={plan.catchmentRadiusMeters}
+          />
         </div>
       )}
     </div>
