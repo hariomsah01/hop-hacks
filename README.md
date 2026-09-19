@@ -1,12 +1,25 @@
 # PantryTwin
 
-Compare two candidate food-pantry locations in Baltimore City using public
-data, explicit operating assumptions, and an AI assistant that is only allowed
-to explain evidence the server computed.
+Help a Baltimore nonprofit decide whether opening a pantry at a chosen point
+would add coverage, compared with a real listed pantry nearby.
 
-PantryTwin answers one question: **given the same staff, food and budget, what
-would each of these two locations actually be able to do?** It reports modelled
-outcomes under assumptions you control. It does not predict success.
+You control the proposed site and its operating plan. The other site is a
+public listing. The report is modelled outcomes under your assumptions, not a
+prediction of success.
+
+## HopHacks prize targets
+
+One track only, plus branded prizes the app actually uses:
+
+| Selection | Role in the product |
+| --- | --- |
+| **Bloomberg — Most Philanthropic Hack** | The only track. Nonprofits compare a proposed pantry against an existing listing. |
+| **Gemini API** | Server-side assistant that may only call approved analysis functions and explain sourced results. |
+| **Auctor — Conversation to Action** | A question plus the current assessment becomes a downloadable action plan. |
+| **DigitalOcean** | Host the running app (App Platform spec in `.do/app.yaml`). |
+
+Do not select unused sponsor prizes. ElevenLabs, Backboard and GoDaddy stay off
+the submission until those features exist.
 
 ---
 
@@ -84,13 +97,13 @@ Fetched by `scripts/ingest/run.mjs` from Baltimore City's ArcGIS open-data
 portal, with the schema of each layer inspected rather than assumed. The fields
 actually used are recorded in `data/processed/validation-report.json`.
 
-| ID | Dataset | Used for |
-| --- | --- | --- |
-| `tracts` | Census tracts, 2020 geography, with the publisher's joined ACS profile | Catchment population |
-| `pantries` | Food pantry partner locations | Existing service listings |
-| `food-access` | Food access resource points | Existing service listings |
-| `city-boundary` | Baltimore City boundary | Inside/outside checks |
-| `acs` | Census ACS 5-year estimates | Poverty and vehicle access (requires `CENSUS_API_KEY`) |
+| ID | Dataset | Used for | Publisher page |
+| --- | --- | --- | --- |
+| `tracts` | Census tracts, 2020 geography, with the publisher's joined ACS profile | Catchment population | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Census_Tract_2020) |
+| `pantries` | Food pantry partner locations | Existing service listings | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Food_Pantry_Partners) |
+| `food-access` | Food access resource points | Existing service listings | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Food_Access) |
+| `city-boundary` | Baltimore City boundary | Inside/outside checks | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Baltimore_City_Boundary) |
+| `acs` | Census ACS 5-year estimates | Poverty and vehicle access (requires `CENSUS_API_KEY`) | [Census ACS 5-year](https://www.census.gov/data/developers/data-sets/acs-5year.html) |
 
 Ingestion writes a checksum, retrieval timestamp, data vintage and terms for
 every source, and records anything that was blocked or skipped instead of
@@ -118,30 +131,23 @@ ring, which assumes people are spread evenly across a tract. A tract that
 reports no population is excluded from the estimate rather than counted as
 zero. If the ring intersects no tract at all, coverage is a genuine zero.
 
-When both pins are close together their catchments overlap. The app measures
-and reports that overlap, because people in the shared area are reachable from
-either site and the two populations must not be added together.
+When the proposed ring overlaps an existing pantry, the app reports **net new
+reach** versus **duplicated reach**. People in the shared area can already
+reach the listed site, so the two populations must not be added together.
 
 ### The 28-day model
 
-Pure and deterministic: identical inputs always produce identical output. Each
-day it receives weekly deliveries limited by storage, expires stock past its
-shelf life, then serves households up to the tightest of volunteer throughput,
+Pure and deterministic, and applied only to the **proposed** pantry. Each day
+it receives weekly deliveries limited by storage, expires stock past its shelf
+life, then serves households up to the tightest of volunteer throughput,
 delivery capacity and stock on hand, drawing first-expiring-first. Tests assert
 that intake equals distribution plus spoilage plus closing stock.
 
+The existing pantry is not simulated. No public dataset states its staffing,
+food volume, storage or budget, so modelling it would mean inventing them.
+
 The model deliberately does **not** infer rent from a location, predict
 attendance, or score a site's chance of success.
-
-### Suitability heuristic
-
-A transparent weighted score over four components: people reachable (35%),
-share of requests served (25%), few existing listings nearby (20%) and cost per
-household (20%). Each component is normalised **against the other candidate
-only**, so the score says which of these two sites looks stronger on these
-criteria. It is not a probability and is not comparable between sessions. A
-component missing data for either site is dropped and the remaining weights are
-rescaled. The formula and live weights are visible in the UI and the export.
 
 ## The AI assistant
 

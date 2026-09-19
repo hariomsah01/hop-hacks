@@ -78,10 +78,12 @@ function ConsequenceCard({ consequence }: { consequence: Consequence }) {
 export default function FindingsPanel({
   assessment,
   loading,
+  onSelectReference,
   onClearReference,
 }: {
   assessment: SiteAssessmentResult | null;
   loading: boolean;
+  onSelectReference: (id: string) => void;
   onClearReference: () => void;
 }) {
   const [scenario, setScenario] = useState<ScenarioName>("medium");
@@ -143,9 +145,33 @@ export default function FindingsPanel({
                 </p>
               </>
             ) : (
-              <p className="text-xs text-[var(--color-navy-500)]">
-                Click a navy dot on the map to pick a real pantry.
-              </p>
+              <div>
+                <p className="text-xs text-[var(--color-navy-500)]">
+                  Pick a real listed pantry. Click a navy dot on the map, or
+                  one of the nearest listings below.
+                </p>
+                {assessment.proposed.listedServices.length > 0 && (
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {assessment.proposed.listedServices.slice(0, 4).map((svc) => (
+                      <li key={svc.id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelectReference(svc.id)}
+                          className="w-full rounded-md border border-[var(--color-hairline)] bg-white px-2 py-1.5 text-left hover:border-[var(--color-reference-600)] hover:bg-white"
+                        >
+                          <span className="block truncate text-[11px] font-semibold text-[var(--color-navy-800)]">
+                            {svc.name}
+                          </span>
+                          <span className="text-[10px] text-[var(--color-navy-400)]">
+                            {svc.distanceMeters.toLocaleString()} m away
+                            {svc.address ? ` · ${svc.address}` : ""}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </div>
           {reference && (
@@ -205,6 +231,16 @@ export default function FindingsPanel({
           reference={reach.referencePopulation}
           referenceName={referenceName}
           hint="Area-weighted from census tracts. These two numbers overlap and must never be added together."
+        />
+        <MetricRow
+          label="Poverty rate in your catchment"
+          measure={assessment.proposed.povertyRate}
+          hint="Area-weighted ACS tract counts inside the straight-line ring."
+        />
+        <MetricRow
+          label="Households without a vehicle"
+          measure={assessment.proposed.noVehicleHouseholdShare}
+          hint="Area-weighted ACS household counts."
         />
         <MetricRow
           label="Duplicated reach"
