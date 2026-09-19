@@ -156,6 +156,20 @@ check("export: numbers match the display",
   markdown.includes(String(Math.round(proposedPop.value))),
   "catchment population appears in the report");
 
+// ----------------------------------------------------------------- sources
+const sourcesRes = await fetch(`${base}/api/sources`);
+check("sources: HTTP 200", sourcesRes.status === 200, `status ${sourcesRes.status}`);
+const sourceCatalog = await sourcesRes.json();
+check("sources: manifest has entries", Array.isArray(sourceCatalog.sources) &&
+  sourceCatalog.sources.length >= 3, `${sourceCatalog.sources?.length ?? 0} sources`);
+check("sources: every ingested dataset has a publisher landing URL",
+  sourceCatalog.sources.every((s) => typeof s.landingUrl === "string" &&
+    /^https?:\/\//.test(s.landingUrl)));
+check("sources: blocked entries still name a publisher page",
+  !Array.isArray(sourceCatalog.validation?.blocked) ||
+  sourceCatalog.validation.blocked.every((b) =>
+    typeof b.landingUrl === "string" && /^https?:\/\//.test(b.landingUrl)));
+
 // --------------------------------------------------------------- assistant
 const assistant = await post("/api/assistant", {
   question: "Would opening here add coverage or duplicate what exists?",

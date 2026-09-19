@@ -71,4 +71,18 @@ describe("dispatchAssistantTool", () => {
       dispatchAssistantTool("invent_success_probability", {}, assessment),
     ).toThrow(/unknown function/i);
   });
+
+  it("returns publisher landing URLs from the manifest, not invented pages", () => {
+    const out = dispatchAssistantTool(
+      "summarize_limitations",
+      {},
+      assessment,
+    ) as {
+      sources: Array<{ id: string; landingUrl: string }>;
+    };
+    expect(out.sources.length).toBeGreaterThan(0);
+    for (const source of out.sources) {
+      expect(source.landingUrl).toMatch(/^https?:\/\//);
+    }
+  });
 });

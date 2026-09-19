@@ -127,7 +127,7 @@ const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "summarize_limitations",
     description:
-      "Everything this analysis cannot tell you: modelling limitations, dataset completeness, and any source that was blocked or skipped during ingestion.",
+      "Everything this analysis cannot tell you: modelling limitations, dataset completeness, any source that was blocked or skipped during ingestion, and the publisher landing URL for each ingested source.",
     parameters: { type: Type.OBJECT, properties: {} },
   },
 ];
@@ -294,6 +294,7 @@ export function dispatchAssistantTool(
           id: s.id,
           publisher: s.publisher,
           title: s.title,
+          landingUrl: s.landingUrl,
           dataVintage: s.dataVintage,
           geographicVintage: s.geographicVintage,
           retrievedAt: s.retrievedAt,

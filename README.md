@@ -97,13 +97,13 @@ Fetched by `scripts/ingest/run.mjs` from Baltimore City's ArcGIS open-data
 portal, with the schema of each layer inspected rather than assumed. The fields
 actually used are recorded in `data/processed/validation-report.json`.
 
-| ID | Dataset | Used for |
-| --- | --- | --- |
-| `tracts` | Census tracts, 2020 geography, with the publisher's joined ACS profile | Catchment population |
-| `pantries` | Food pantry partner locations | Existing service listings |
-| `food-access` | Food access resource points | Existing service listings |
-| `city-boundary` | Baltimore City boundary | Inside/outside checks |
-| `acs` | Census ACS 5-year estimates | Poverty and vehicle access (requires `CENSUS_API_KEY`) |
+| ID | Dataset | Used for | Publisher page |
+| --- | --- | --- | --- |
+| `tracts` | Census tracts, 2020 geography, with the publisher's joined ACS profile | Catchment population | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Census_Tract_2020) |
+| `pantries` | Food pantry partner locations | Existing service listings | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Food_Pantry_Partners) |
+| `food-access` | Food access resource points | Existing service listings | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Food_Access) |
+| `city-boundary` | Baltimore City boundary | Inside/outside checks | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Baltimore_City_Boundary) |
+| `acs` | Census ACS 5-year estimates | Poverty and vehicle access (requires `CENSUS_API_KEY`) | [Census ACS 5-year](https://www.census.gov/data/developers/data-sets/acs-5year.html) |
 
 Ingestion writes a checksum, retrieval timestamp, data vintage and terms for
 every source, and records anything that was blocked or skipped instead of

@@ -13,6 +13,7 @@ import type { ReferencePin, SitePoint } from "@/components/map/MapView";
 import ExplanationPanel from "@/components/planning/ExplanationPanel";
 import FindingsPanel from "@/components/planning/FindingsPanel";
 import PlanPanel from "@/components/planning/PlanPanel";
+import SourcesBar from "@/components/SourcesBar";
 import TracksBar from "@/components/TracksBar";
 
 /** MapLibre touches window on import, so the map is client-only. */
@@ -138,8 +139,9 @@ export default function PantryTwinApp() {
                 Would a new Baltimore pantry here add coverage?
               </span>
             </h1>
-            <div className="mt-1">
+            <div className="mt-1 flex flex-col gap-1">
               <TracksBar />
+              <SourcesBar />
             </div>
           </div>
         </div>
@@ -182,6 +184,14 @@ export default function PantryTwinApp() {
               {error}
             </span>
           )}
+          <a
+            href="/api/sources"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-[var(--color-navy-400)] underline hover:text-[var(--color-teal-700)]"
+          >
+            Sources
+          </a>
           <a
             href="/api/health"
             target="_blank"
