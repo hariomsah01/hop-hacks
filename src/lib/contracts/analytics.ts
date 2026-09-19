@@ -4,8 +4,12 @@ import { z } from "zod";
  * Comparison series for the Analytics tab. One period is one x-axis tick.
  * Keep this shape stable so the UI and the simulation backend can land separately.
  */
+export const AnalyticsPeriodKindSchema = z.enum(["observed", "forecast"]);
+export type AnalyticsPeriodKind = z.infer<typeof AnalyticsPeriodKindSchema>;
+
 export const AnalyticsPeriodSchema = z.object({
   label: z.string(),
+  kind: AnalyticsPeriodKindSchema,
   foodDistributed: z.number(),
   foodReceived: z.number(),
   foodWasted: z.number(),
@@ -18,6 +22,8 @@ export const AnalyticsPeriodSchema = z.object({
 export type AnalyticsPeriod = z.infer<typeof AnalyticsPeriodSchema>;
 
 export const AnalyticsSeriesSchema = z.object({
+  /** Index of the first forecast month. History is everything before it. */
+  firstForecastIndex: z.number().int().min(0),
   periods: z.array(AnalyticsPeriodSchema),
 });
 export type AnalyticsSeries = z.infer<typeof AnalyticsSeriesSchema>;

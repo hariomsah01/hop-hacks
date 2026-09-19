@@ -168,19 +168,33 @@ export default function PantryTwinApp() {
   const planner = mode === "planner";
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
-      <header className="z-20 flex h-12 shrink-0 items-center gap-3 border-b border-[var(--color-hairline)] bg-[var(--color-panel)] px-3">
+    <div className={`flex h-screen flex-col overflow-hidden ${onMap ? "" : "analytics-shell"}`}>
+      <header
+        className={`z-20 flex h-12 shrink-0 items-center gap-3 border-b px-3 ${
+          onMap
+            ? "border-[var(--color-hairline)] bg-[var(--color-panel)]"
+            : "border-[#1c2430] bg-[#07090d]"
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <MapPin
             size={16}
-            className="shrink-0 text-[var(--color-teal-600)]"
+            className={`shrink-0 ${onMap ? "text-[var(--color-teal-600)]" : "text-[#ffb000]"}`}
             aria-hidden
           />
           <div className="min-w-0 leading-tight">
-            <h1 className="text-sm font-semibold tracking-tight text-[var(--color-navy-800)]">
+            <h1
+              className={`text-sm font-semibold tracking-tight ${
+                onMap ? "text-[var(--color-navy-800)]" : "font-mono text-[#ffb000]"
+              }`}
+            >
               PantryTwin
             </h1>
-            <p className="truncate text-[11px] text-[var(--color-navy-400)]">
+            <p
+              className={`truncate text-[11px] ${
+                onMap ? "text-[var(--color-navy-400)]" : "font-mono text-[#7d8b9a]"
+              }`}
+            >
               {!onMap
                 ? "Predicted baseline and new-location scenarios"
                 : planner
@@ -191,7 +205,11 @@ export default function PantryTwinApp() {
         </div>
 
         <div
-          className="flex rounded-lg border border-[var(--color-hairline)] bg-[var(--color-canvas)] p-0.5"
+          className={`flex rounded-lg border p-0.5 ${
+            onMap
+              ? "border-[var(--color-hairline)] bg-[var(--color-canvas)]"
+              : "border-[#2a3340] bg-[#0d1117]"
+          }`}
           role="tablist"
           aria-label="PantryTwin views"
         >
@@ -205,7 +223,7 @@ export default function PantryTwinApp() {
             className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
               onMap
                 ? "bg-white text-[var(--color-teal-700)] shadow-sm"
-                : "text-[var(--color-navy-500)] hover:text-[var(--color-navy-800)]"
+                : "text-[#7d8b9a] hover:text-[#ffb000]"
             }`}
           >
             <MapPin size={12} aria-hidden />
@@ -220,7 +238,7 @@ export default function PantryTwinApp() {
             onClick={() => setView("analytics")}
             className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
               !onMap
-                ? "bg-white text-[var(--color-teal-700)] shadow-sm"
+                ? "bg-[#ffb000] text-black"
                 : "text-[var(--color-navy-500)] hover:text-[var(--color-navy-800)]"
             }`}
           >
@@ -304,7 +322,7 @@ export default function PantryTwinApp() {
           {onMap && planner && (
             <ExportMenu request={request} disabled={!assessment} />
           )}
-          <AboutMenu />
+          <AboutMenu tone={onMap ? "light" : "dark"} />
         </div>
       </header>
 

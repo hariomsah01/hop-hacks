@@ -5,7 +5,11 @@ import { CircleHelp } from "lucide-react";
 import { STATUS_META } from "@/lib/format";
 import TracksBar from "@/components/TracksBar";
 
-export default function AboutMenu() {
+export default function AboutMenu({
+  tone = "light",
+}: {
+  tone?: "light" | "dark";
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -32,7 +36,11 @@ export default function AboutMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="flex items-center gap-1 rounded-md border border-[var(--color-hairline)] px-2 py-1.5 text-[11px] font-medium text-[var(--color-navy-600)] hover:bg-[var(--color-teal-50)]"
+        className={
+          tone === "dark"
+            ? "flex items-center gap-1 rounded-sm border border-[#2a3340] px-2 py-1.5 text-[11px] font-medium text-[#c5d0dc] hover:border-[#ffb000] hover:text-[#ffb000]"
+            : "flex items-center gap-1 rounded-md border border-[var(--color-hairline)] px-2 py-1.5 text-[11px] font-medium text-[var(--color-navy-600)] hover:bg-[var(--color-teal-50)]"
+        }
       >
         <CircleHelp size={12} aria-hidden />
         About

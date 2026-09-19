@@ -70,3 +70,41 @@ input[type="range"] {
   scrollbar-width: thin;
   scrollbar-color: var(--color-hairline) transparent;
 }
+
+/* Analytics tab: dense, dark, terminal-like. Scoped so Map stays light. */
+.analytics-shell header {
+  background: #07090d;
+  border-bottom-color: #1c2430;
+}
+
+.analytics-terminal {
+  --at-bg: #07090d;
+  --at-panel: #0d1117;
+  --at-line: #1c2430;
+  --at-text: #d5dde6;
+  --at-muted: #7d8b9a;
+  --at-amber: #ffb000;
+  --at-yellow: #f5d76e;
+  --at-cyan: #3ee0d8;
+  --at-orange: #ff7a45;
+  color: var(--at-text);
+  background: var(--at-bg);
+  font-family:
+    ui-monospace,
+    "Cascadia Mono",
+    "Segoe UI Mono",
+    Menlo,
+    Consolas,
+    monospace;
+  font-feature-settings: "tnum" 1;
+}
+
+.analytics-terminal input[type="range"] {
+  accent-color: var(--at-amber);
+}
+
+.analytics-terminal .panel-scroll,
+.analytics-terminal {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3340 transparent;
+}
