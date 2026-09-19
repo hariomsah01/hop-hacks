@@ -5,14 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MapPin,
   Network,
-  PanelLeft,
   PanelRight,
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
 import {
   DEFAULT_OPERATING_PLAN,
-  type OperatingPlan,
   type SiteAssessmentRequest,
   type SiteAssessmentResult,
 } from "@/lib/contracts";
@@ -25,7 +23,6 @@ import ExplanationPanel, {
   type InspectorTab,
 } from "@/components/planning/ExplanationPanel";
 import FindingsPanel from "@/components/planning/FindingsPanel";
-import PlanPanel from "@/components/planning/PlanPanel";
 
 /** MapLibre touches window on import, so the map is client-only. */
 const MapView = dynamic(() => import("@/components/map/MapView"), {
@@ -48,7 +45,7 @@ function PanelToggle({
 }: {
   pressed: boolean;
   onClick: () => void;
-  icon: typeof PanelLeft;
+  icon: typeof PanelRight;
   label: string;
 }) {
   return (
@@ -68,17 +65,17 @@ function PanelToggle({
   );
 }
 
+/** Site planner no longer mounts a Plan panel; analysis uses DEFAULT_OPERATING_PLAN. */
 export default function PantryTwinApp() {
   const [mode, setMode] = useState<"planner" | "network">("planner");
   const [proposed, setProposed] = useState<SitePoint>(DEFAULT_PROPOSED);
   const [referenceId, setReferenceId] = useState<string | null>(null);
-  const [plan, setPlan] = useState<OperatingPlan>(DEFAULT_OPERATING_PLAN);
+  const plan = DEFAULT_OPERATING_PLAN;
   const [assessment, setAssessment] = useState<SiteAssessmentResult | null>(
     null,
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showPlan, setShowPlan] = useState(true);
   const [showFindings, setShowFindings] = useState(true);
   const [showAssistant, setShowAssistant] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("explanation");
@@ -233,12 +230,6 @@ export default function PantryTwinApp() {
           {planner && (
             <div className="flex gap-1">
               <PanelToggle
-                pressed={showPlan}
-                onClick={() => setShowPlan((v) => !v)}
-                icon={PanelLeft}
-                label="Plan"
-              />
-              <PanelToggle
                 pressed={showFindings}
                 onClick={() => setShowFindings((v) => !v)}
                 icon={PanelRight}
@@ -264,16 +255,6 @@ export default function PantryTwinApp() {
       ) : (
         <>
           <div className="flex min-h-0 flex-1">
-            <aside
-              className={`${showPlan ? "block" : "hidden"} w-72 shrink-0 border-r border-[var(--color-hairline)]`}
-            >
-              <PlanPanel
-                plan={plan}
-                onChange={setPlan}
-                onResetPlan={() => setPlan(DEFAULT_OPERATING_PLAN)}
-              />
-            </aside>
-
             <main className="flex min-w-0 flex-1 flex-col">
               <div className="min-h-0 flex-1">
                 <MapView
