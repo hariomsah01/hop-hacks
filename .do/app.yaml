@@ -46,7 +46,7 @@ services:
 
       - key: GEMINI_MODEL
         scope: RUN_TIME
-        value: gemini-2.5-flash
+        value: gemini-3.6-flash
 
       # Basemap tiles come from a third party that requires attribution.
       - key: NEXT_PUBLIC_MAP_STYLE_URL

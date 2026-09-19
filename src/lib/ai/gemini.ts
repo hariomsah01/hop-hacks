@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, type FunctionDeclaration } from "@google/genai";
+import { GoogleGenAI, Type, type Content, type FunctionDeclaration } from "@google/genai";
 import { z } from "zod";
 import type {
   GeographicAnalysis,
@@ -328,12 +328,17 @@ const FALLBACK_TEXT =
   "Every number in the findings, reach and export panels was produced by the deterministic " +
   "analysis functions and does not depend on the assistant.";
 
+function isTransientGeminiFailure(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /UNAVAILABLE|high demand|"code":503/.test(message);
+}
+
 export async function askAssistant(
   question: string,
   assessment: SiteAssessmentResult,
 ): Promise<AssistantAnswer> {
   const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
   const toolCalls: ToolCallRecord[] = [];
 
   if (!apiKey) {
@@ -354,7 +359,7 @@ export async function askAssistant(
 
   // The model sees the question plus a compact framing of what is loaded. All
   // actual values must still come back through function calls.
-  const contents: Array<{ role: string; parts: unknown[] }> = [
+  const contents: Content[] = [
     {
       role: "user",
       parts: [
@@ -380,18 +385,32 @@ export async function askAssistant(
         throw new Error("Assistant exceeded its time budget");
       }
 
-      const response = await ai.models.generateContent({
-        model,
-        contents: contents as never,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-          temperature: 0,
-          abortSignal: AbortSignal.timeout(
-            Math.max(1000, deadline - Date.now()),
-          ),
-        },
-      });
+      let response;
+      for (let attempt = 0; ; attempt += 1) {
+        if (Date.now() > deadline) {
+          throw new Error("Assistant exceeded its time budget");
+        }
+        try {
+          response = await ai.models.generateContent({
+            model,
+            contents,
+            config: {
+              systemInstruction: SYSTEM_INSTRUCTION,
+              tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+              temperature: 0,
+              abortSignal: AbortSignal.timeout(
+                Math.max(1000, deadline - Date.now()),
+              ),
+            },
+          });
+          break;
+        } catch (err) {
+          if (!isTransientGeminiFailure(err) || attempt >= 2) throw err;
+          const waitMs = Math.min(3000, 1500 * (attempt + 1));
+          if (Date.now() + waitMs > deadline) throw err;
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+      }
 
       const calls = response.functionCalls ?? [];
 
@@ -408,9 +427,16 @@ export async function askAssistant(
         };
       }
 
+      // Gemini 3 requires the original model parts, including thought
+      // signatures. Rebuilding functionCall objects from the convenience
+      // getter drops those signatures and the next turn is rejected.
+      const modelParts = response.candidates?.[0]?.content?.parts;
       contents.push({
         role: "model",
-        parts: calls.map((call) => ({ functionCall: call })),
+        parts:
+          modelParts && modelParts.length > 0
+            ? modelParts
+            : calls.map((call) => ({ functionCall: call })),
       });
 
       const responseParts = calls.map((call) => {

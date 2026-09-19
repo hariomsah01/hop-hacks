@@ -233,6 +233,16 @@ export default function FindingsPanel({
           hint="Area-weighted from census tracts. These two numbers overlap and must never be added together."
         />
         <MetricRow
+          label="Poverty rate in your catchment"
+          measure={assessment.proposed.povertyRate}
+          hint="Area-weighted ACS tract counts inside the straight-line ring."
+        />
+        <MetricRow
+          label="Households without a vehicle"
+          measure={assessment.proposed.noVehicleHouseholdShare}
+          hint="Area-weighted ACS household counts."
+        />
+        <MetricRow
           label="Duplicated reach"
           measure={reach.duplicatedPopulation}
           hint={reach.overlap.note}

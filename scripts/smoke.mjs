@@ -124,8 +124,13 @@ check("consequences: demand is always declared an assumption",
 // Provenance rules that must survive serialisation.
 const poverty = assessment.proposed.povertyRate;
 check("provenance: unavailable stays null, never zero",
-  poverty.value === null ? poverty.status === "unavailable" : true,
-  `povertyRate=${poverty.value}`);
+  poverty.value === null ? poverty.status === "unavailable" : poverty.status !== "unavailable",
+  `povertyRate=${poverty.value} status=${poverty.status}`);
+if (poverty.value !== null) {
+  check("acs: poverty rate is an estimated share from ACS",
+    poverty.status === "estimated" && poverty.value >= 0 && poverty.value <= 1 &&
+    poverty.sourceIds.includes("acs"));
+}
 
 const flat = JSON.stringify(assessment);
 check("safety: no probability-of-success language",
