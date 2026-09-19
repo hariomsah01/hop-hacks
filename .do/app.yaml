@@ -1,0 +1,51 @@
+# DigitalOcean App Platform specification for PantryTwin.
+#
+# Deploy: point App Platform at this repository, then set GEMINI_API_KEY as an
+# encrypted secret in the dashboard. Never commit a real key.
+name: pantrytwin
+region: nyc
+
+services:
+  - name: web
+    environment_slug: node-js
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    http_port: 8080
+
+    github:
+      # Replace with your repository. deploy_on_push rebuilds on every commit.
+      repo: your-org/pantrytwin
+      branch: main
+      deploy_on_push: true
+
+    build_command: npm ci && npm run build
+    # App Platform injects PORT; next start honours it.
+    run_command: npm start
+
+    # Reports 503 when the cached datasets are missing, so a deploy that lost
+    # data/processed fails visibly instead of serving an empty map.
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 20
+      period_seconds: 15
+      timeout_seconds: 5
+      failure_threshold: 3
+
+    envs:
+      - key: NODE_ENV
+        scope: RUN_AND_BUILD_TIME
+        value: production
+
+      # Set this in the dashboard as an encrypted secret, not here.
+      - key: GEMINI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: GEMINI_MODEL
+        scope: RUN_TIME
+        value: gemini-2.5-flash
+
+      # Basemap tiles come from a third party that requires attribution.
+      - key: NEXT_PUBLIC_MAP_STYLE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: https://basemaps.cartocdn.com/gl/positron-gl-style/style.json
