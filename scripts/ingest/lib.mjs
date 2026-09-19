@@ -48,9 +48,48 @@ export function sha256(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
+/**
+ * Pretty-print cached datasets: one indented object per record, compact
+ * arrays of primitives (source IDs, coordinate rings) so GeoJSON stays
+ * readable instead of one number per line.
+ */
+export function stringifyJson(value, indent = 2) {
+  const pad = (depth) => " ".repeat(indent * depth);
+
+  const compact = (node) =>
+    Array.isArray(node) &&
+    node.every(
+      (item) =>
+        item === null ||
+        ["string", "number", "boolean"].includes(typeof item) ||
+        compact(item),
+    );
+
+  const walk = (node, depth) => {
+    if (node === null || typeof node !== "object") {
+      return JSON.stringify(node);
+    }
+    if (Array.isArray(node)) {
+      if (node.length === 0 || compact(node)) return JSON.stringify(node);
+      const inner = node
+        .map((item) => `${pad(depth + 1)}${walk(item, depth + 1)}`)
+        .join(",\n");
+      return `[\n${inner}\n${pad(depth)}]`;
+    }
+    const keys = Object.keys(node);
+    if (keys.length === 0) return "{}";
+    const inner = keys
+      .map((key) => `${pad(depth + 1)}${JSON.stringify(key)}: ${walk(node[key], depth + 1)}`)
+      .join(",\n");
+    return `{\n${inner}\n${pad(depth)}}`;
+  };
+
+  return `${walk(value, 0)}\n`;
+}
+
 export async function writeJson(path, data) {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(data), "utf8");
+  await writeFile(path, stringifyJson(data), "utf8");
 }
 
 /**

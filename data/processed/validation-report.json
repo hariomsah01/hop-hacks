@@ -1,1 +1,113 @@
-{"startedAt":"2026-09-19T17:03:37.870Z","datasets":[{"id":"city-boundary","status":"ok","count":1,"rawCount":1,"availableFieldCount":8,"chosenFields":{},"droppedFields":[],"message":"1 of 1 records kept from \"BaltimoreCityBoundary\""},{"id":"tracts","status":"ok","count":199,"rawCount":199,"availableFieldCount":731,"chosenFields":{"geoid":"GEOID20","name":"NAMELSAD20","population":"Estimate__SEX_AND_AGE__Total_po","housingUnits":"Estimate__Total_housing_units","landArea":"ALAND20"},"droppedFields":[],"message":"199 of 199 records kept from \"Census_Tract_2020\""},{"id":"pantries","status":"ok","count":108,"rawCount":108,"availableFieldCount":9,"chosenFields":{"name":"Account_Name","program":"Program","address":"Address","zip":"ZIP","hours":null},"droppedFields":["hours"],"message":"108 of 108 records kept from \"Food_Pantry_Partners\""},{"id":"food-access","status":"ok","count":30,"rawCount":31,"availableFieldCount":24,"chosenFields":{"name":"Name","services":"Services","address":"Match_addr","zip":"ZipCode","phone":"PhoneNumbe","website":"Website","hours":"Additional"},"droppedFields":[],"message":"30 of 31 records kept from \"Food_Access\""},{"id":"services-merged","status":"ok","count":128,"rawCount":138,"message":"138 listings from 2 rosters collapsed to 128 unique sites"},{"id":"acs","status":"ok","count":199,"message":"199 tracts enriched from ACS 5-year estimates"},{"id":"tracts-merged","status":"ok","count":199,"message":"199 tracts written; 199 have population, 0 unavailable"}],"checks":[{"name":"tract-population-sums-to-city","passed":true,"detail":"tract population total = 577,193 (expected 500,000-700,000)"},{"name":"tracts-have-geometry","passed":true,"detail":"199 tracts carry geometry"},{"name":"geoids-unique-strings","passed":true,"detail":"199 unique string GEOIDs"},{"name":"services-inside-city-bbox","passed":true,"detail":"128 listings inside the Baltimore City bounding box"},{"name":"service-hours-completeness","passed":true,"detail":"16 of 128 listings publish any hours text; the rest stay unknown"}],"blocked":[],"finishedAt":"2026-09-19T17:03:41.165Z"}
+{
+  "startedAt": "2026-09-19T17:03:37.870Z",
+  "datasets": [
+    {
+      "id": "city-boundary",
+      "status": "ok",
+      "count": 1,
+      "rawCount": 1,
+      "availableFieldCount": 8,
+      "chosenFields": {},
+      "droppedFields": [],
+      "message": "1 of 1 records kept from \"BaltimoreCityBoundary\""
+    },
+    {
+      "id": "tracts",
+      "status": "ok",
+      "count": 199,
+      "rawCount": 199,
+      "availableFieldCount": 731,
+      "chosenFields": {
+        "geoid": "GEOID20",
+        "name": "NAMELSAD20",
+        "population": "Estimate__SEX_AND_AGE__Total_po",
+        "housingUnits": "Estimate__Total_housing_units",
+        "landArea": "ALAND20"
+      },
+      "droppedFields": [],
+      "message": "199 of 199 records kept from \"Census_Tract_2020\""
+    },
+    {
+      "id": "pantries",
+      "status": "ok",
+      "count": 108,
+      "rawCount": 108,
+      "availableFieldCount": 9,
+      "chosenFields": {
+        "name": "Account_Name",
+        "program": "Program",
+        "address": "Address",
+        "zip": "ZIP",
+        "hours": null
+      },
+      "droppedFields": ["hours"],
+      "message": "108 of 108 records kept from \"Food_Pantry_Partners\""
+    },
+    {
+      "id": "food-access",
+      "status": "ok",
+      "count": 30,
+      "rawCount": 31,
+      "availableFieldCount": 24,
+      "chosenFields": {
+        "name": "Name",
+        "services": "Services",
+        "address": "Match_addr",
+        "zip": "ZipCode",
+        "phone": "PhoneNumbe",
+        "website": "Website",
+        "hours": "Additional"
+      },
+      "droppedFields": [],
+      "message": "30 of 31 records kept from \"Food_Access\""
+    },
+    {
+      "id": "services-merged",
+      "status": "ok",
+      "count": 128,
+      "rawCount": 138,
+      "message": "138 listings from 2 rosters collapsed to 128 unique sites"
+    },
+    {
+      "id": "acs",
+      "status": "ok",
+      "count": 199,
+      "message": "199 tracts enriched from ACS 5-year estimates"
+    },
+    {
+      "id": "tracts-merged",
+      "status": "ok",
+      "count": 199,
+      "message": "199 tracts written; 199 have population, 0 unavailable"
+    }
+  ],
+  "checks": [
+    {
+      "name": "tract-population-sums-to-city",
+      "passed": true,
+      "detail": "tract population total = 577,193 (expected 500,000-700,000)"
+    },
+    {
+      "name": "tracts-have-geometry",
+      "passed": true,
+      "detail": "199 tracts carry geometry"
+    },
+    {
+      "name": "geoids-unique-strings",
+      "passed": true,
+      "detail": "199 unique string GEOIDs"
+    },
+    {
+      "name": "services-inside-city-bbox",
+      "passed": true,
+      "detail": "128 listings inside the Baltimore City bounding box"
+    },
+    {
+      "name": "service-hours-completeness",
+      "passed": true,
+      "detail": "16 of 128 listings publish any hours text; the rest stay unknown"
+    }
+  ],
+  "blocked": [],
+  "finishedAt": "2026-09-19T17:03:41.165Z"
+}
