@@ -13,14 +13,13 @@ services:
     http_port: 8080
 
     github:
-      # Replace with your repository. deploy_on_push rebuilds on every commit.
-      repo: your-org/pantrytwin
+      repo: hariomsah01/pantryTwinApp
       branch: main
       deploy_on_push: true
 
     build_command: npm ci && npm run build
-    # App Platform injects PORT; next start honours it.
-    run_command: npm start
+    # Bind to all interfaces so App Platform health checks can reach Next.js.
+    run_command: npm start -- --port 8080
 
     # Reports 503 when the cached datasets are missing, so a deploy that lost
     # data/processed fails visibly instead of serving an empty map.
@@ -40,6 +39,10 @@ services:
       - key: GEMINI_API_KEY
         scope: RUN_TIME
         type: SECRET
+
+      - key: PORT
+        scope: RUN_TIME
+        value: "8080"
 
       - key: GEMINI_MODEL
         scope: RUN_TIME

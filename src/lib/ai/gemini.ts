@@ -200,7 +200,7 @@ export interface ToolCallRecord {
   error?: string;
 }
 
-function dispatchTool(
+export function dispatchAssistantTool(
   name: string,
   rawArgs: unknown,
   assessment: SiteAssessmentResult,
@@ -415,7 +415,7 @@ export async function askAssistant(
       const responseParts = calls.map((call) => {
         const name = call.name ?? "unknown";
         try {
-          const output = dispatchTool(name, call.args, assessment);
+          const output = dispatchAssistantTool(name, call.args, assessment);
           toolCalls.push({ name, args: call.args, ok: true });
           return { functionResponse: { name, response: { output } } };
         } catch (err) {

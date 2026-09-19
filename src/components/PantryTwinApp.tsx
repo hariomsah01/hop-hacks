@@ -13,6 +13,7 @@ import type { ReferencePin, SitePoint } from "@/components/map/MapView";
 import ExplanationPanel from "@/components/planning/ExplanationPanel";
 import FindingsPanel from "@/components/planning/FindingsPanel";
 import PlanPanel from "@/components/planning/PlanPanel";
+import TracksBar from "@/components/TracksBar";
 
 /** MapLibre touches window on import, so the map is client-only. */
 const MapView = dynamic(() => import("@/components/map/MapView"), {
@@ -127,16 +128,19 @@ export default function PantryTwinApp() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-hairline)] bg-[var(--color-panel)] px-4 py-2">
-        <div className="flex items-center gap-2">
-          <MapPin size={18} className="text-[var(--color-teal-600)]" aria-hidden />
-          <div>
+      <header className="flex shrink-0 flex-col gap-2 border-b border-[var(--color-hairline)] bg-[var(--color-panel)] px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-2">
+          <MapPin size={18} className="mt-0.5 shrink-0 text-[var(--color-teal-600)]" aria-hidden />
+          <div className="min-w-0">
             <h1 className="text-sm font-bold tracking-tight text-[var(--color-navy-800)]">
               PantryTwin
               <span className="ml-1.5 font-normal text-[var(--color-navy-400)]">
                 Would a new Baltimore pantry here add coverage?
               </span>
             </h1>
+            <div className="mt-1">
+              <TracksBar />
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -224,6 +228,7 @@ export default function PantryTwinApp() {
           <FindingsPanel
             assessment={assessment}
             loading={loading}
+            onSelectReference={(id) => handleSelectReference(id)}
             onClearReference={() => setReferenceId(null)}
           />
         </aside>
