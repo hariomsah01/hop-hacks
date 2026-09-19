@@ -2,7 +2,15 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChartColumn, MapPin, PanelLeft, PanelRight, TriangleAlert } from "lucide-react";
+import {
+  ChartColumn,
+  MapPin,
+  Network,
+  PanelLeft,
+  PanelRight,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
 import {
   DEFAULT_OPERATING_PLAN,
   type OperatingPlan,
@@ -10,8 +18,14 @@ import {
   type SiteAssessmentResult,
 } from "@/lib/contracts";
 import type { ReferencePin, SitePoint } from "@/components/map/MapView";
+import AboutMenu from "@/components/AboutMenu";
 import AnalyticsView from "@/components/analytics/AnalyticsView";
-import ExplanationPanel from "@/components/planning/ExplanationPanel";
+import ExportMenu from "@/components/ExportMenu";
+import StatusBar from "@/components/StatusBar";
+import NetworkTwin from "@/components/network/NetworkTwin";
+import ExplanationPanel, {
+  type InspectorTab,
+} from "@/components/planning/ExplanationPanel";
 import FindingsPanel from "@/components/planning/FindingsPanel";
 import PlanPanel from "@/components/planning/PlanPanel";
 
@@ -30,8 +44,37 @@ const MapView = dynamic(() => import("@/components/map/MapView"), {
 /** Opening position: a dense central Baltimore block, near Seton Hill. */
 const DEFAULT_PROPOSED: SitePoint = { lng: -76.6205, lat: 39.2986 };
 
+function PanelToggle({
+  pressed,
+  onClick,
+  icon: Icon,
+  label,
+}: {
+  pressed: boolean;
+  onClick: () => void;
+  icon: typeof PanelLeft;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={pressed}
+      className={`flex items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] font-medium transition ${
+        pressed
+          ? "border-[var(--color-teal-600)] bg-[var(--color-teal-50)] text-[var(--color-teal-700)]"
+          : "border-[var(--color-hairline)] text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)]"
+      }`}
+    >
+      <Icon size={12} aria-hidden />
+      {label}
+    </button>
+  );
+}
+
 export default function PantryTwinApp() {
   const [view, setView] = useState<AppView>("map");
+  const [mode, setMode] = useState<"planner" | "network">("planner");
   const [proposed, setProposed] = useState<SitePoint>(DEFAULT_PROPOSED);
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [plan, setPlan] = useState<OperatingPlan>(DEFAULT_OPERATING_PLAN);
@@ -40,24 +83,16 @@ export default function PantryTwinApp() {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Both panels are toggleable at every width so neither can become
-  // unreachable on a smaller laptop or projector.
   const [showPlan, setShowPlan] = useState(true);
   const [showFindings, setShowFindings] = useState(true);
-
-  useEffect(() => {
-    // On a narrow viewport, start with the map unobstructed.
-    if (window.innerWidth < 1280) setShowPlan(false);
-    if (window.innerWidth < 1024) setShowFindings(false);
-  }, []);
+  const [showAssistant, setShowAssistant] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("explanation");
 
   const request = useMemo<SiteAssessmentRequest>(
     () => ({ proposed, referenceServiceId: referenceId, plan }),
     [proposed, referenceId, plan],
   );
 
-  // Debounce so dragging a pin or sweeping a slider issues one request.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
@@ -80,7 +115,6 @@ export default function PantryTwinApp() {
           return res.json() as Promise<SiteAssessmentResult>;
         })
         .then((result) => {
-          // Ignore responses from superseded requests.
           if (id !== requestIdRef.current) return;
           setAssessment(result);
           setError(null);
@@ -105,7 +139,6 @@ export default function PantryTwinApp() {
 
   const handleSelectReference = useCallback((id: string | null) => {
     setReferenceId(id);
-    // The findings only make sense once they are visible.
     if (id) setShowFindings(true);
   }, []);
 
@@ -114,8 +147,11 @@ export default function PantryTwinApp() {
     setReferenceId(null);
   }, []);
 
-  // The map needs coordinates for the selected pantry, which only the server
-  // can resolve from an id, so the pin follows the latest assessment.
+  const openSources = useCallback(() => {
+    setInspectorTab("sources");
+    setShowAssistant(true);
+  }, []);
+
   const referencePin: ReferencePin | null = useMemo(() => {
     const pantry = assessment?.reference?.pantry;
     if (!pantry || pantry.id !== referenceId) return null;
@@ -129,113 +165,146 @@ export default function PantryTwinApp() {
 
   const outsideCity = assessment && !assessment.proposed.withinCityBoundary;
   const onMap = view === "map";
+  const planner = mode === "planner";
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-hairline)] bg-[var(--color-panel)] px-4 py-2">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex items-center gap-2">
-            <MapPin size={18} className="text-[var(--color-teal-600)]" aria-hidden />
-            <div>
-              <h1 className="text-sm font-bold tracking-tight text-[var(--color-navy-800)]">
-                PantryTwin
-                <span className="ml-1.5 font-normal text-[var(--color-navy-400)]">
-                  {onMap
-                    ? "Would a new Baltimore pantry here add coverage?"
-                    : "Predicted baseline and new-location scenarios"}
-                </span>
-              </h1>
-            </div>
+      <header className="z-20 flex h-12 shrink-0 items-center gap-3 border-b border-[var(--color-hairline)] bg-[var(--color-panel)] px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <MapPin
+            size={16}
+            className="shrink-0 text-[var(--color-teal-600)]"
+            aria-hidden
+          />
+          <div className="min-w-0 leading-tight">
+            <h1 className="text-sm font-semibold tracking-tight text-[var(--color-navy-800)]">
+              PantryTwin
+            </h1>
+            <p className="truncate text-[11px] text-[var(--color-navy-400)]">
+              {!onMap
+                ? "Predicted baseline and new-location scenarios"
+                : planner
+                  ? "Baltimore City pantry siting"
+                  : "Baltimore City pantry network"}
+            </p>
           </div>
+        </div>
 
+        <div
+          className="flex rounded-lg border border-[var(--color-hairline)] bg-[var(--color-canvas)] p-0.5"
+          role="tablist"
+          aria-label="PantryTwin views"
+        >
+          <button
+            type="button"
+            role="tab"
+            id="view-tab-map"
+            aria-selected={onMap}
+            aria-controls="view-panel-map"
+            onClick={() => setView("map")}
+            className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+              onMap
+                ? "bg-white text-[var(--color-teal-700)] shadow-sm"
+                : "text-[var(--color-navy-500)] hover:text-[var(--color-navy-800)]"
+            }`}
+          >
+            <MapPin size={12} aria-hidden />
+            Map
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="view-tab-analytics"
+            aria-selected={!onMap}
+            aria-controls="view-panel-analytics"
+            onClick={() => setView("analytics")}
+            className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+              !onMap
+                ? "bg-white text-[var(--color-teal-700)] shadow-sm"
+                : "text-[var(--color-navy-500)] hover:text-[var(--color-navy-800)]"
+            }`}
+          >
+            <ChartColumn size={12} aria-hidden />
+            Analytics
+          </button>
+        </div>
+
+        {onMap && (
           <div
             className="flex rounded-lg border border-[var(--color-hairline)] bg-[var(--color-canvas)] p-0.5"
             role="tablist"
-            aria-label="PantryTwin views"
+            aria-label="PantryTwin mode"
           >
             <button
               type="button"
               role="tab"
-              id="view-tab-map"
-              aria-selected={onMap}
-              aria-controls="view-panel-map"
-              onClick={() => setView("map")}
+              aria-selected={planner}
+              onClick={() => setMode("planner")}
               className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
-                onMap
+                planner
                   ? "bg-white text-[var(--color-teal-700)] shadow-sm"
                   : "text-[var(--color-navy-500)] hover:text-[var(--color-navy-800)]"
               }`}
             >
               <MapPin size={12} aria-hidden />
-              Map
+              Site planner
             </button>
             <button
               type="button"
               role="tab"
-              id="view-tab-analytics"
-              aria-selected={!onMap}
-              aria-controls="view-panel-analytics"
-              onClick={() => setView("analytics")}
+              aria-selected={!planner}
+              onClick={() => setMode("network")}
               className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
-                !onMap
-                  ? "bg-white text-[var(--color-teal-700)] shadow-sm"
+                !planner
+                  ? "bg-white text-[var(--color-reference-600)] shadow-sm"
                   : "text-[var(--color-navy-500)] hover:text-[var(--color-navy-800)]"
               }`}
             >
-              <ChartColumn size={12} aria-hidden />
-              Analytics
+              <Network size={12} aria-hidden />
+              Network twin
             </button>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {onMap && (
-            <div className="flex gap-1">
-              <button
-                type="button"
-                onClick={() => setShowPlan((v) => !v)}
-                aria-pressed={showPlan}
-                className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                  showPlan
-                    ? "border-[var(--color-teal-600)] bg-[var(--color-teal-50)] text-[var(--color-teal-700)]"
-                    : "border-[var(--color-hairline)] text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)]"
-                }`}
-              >
-                <PanelLeft size={12} aria-hidden /> Plan
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowFindings((v) => !v)}
-                aria-pressed={showFindings}
-                className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                  showFindings
-                    ? "border-[var(--color-teal-600)] bg-[var(--color-teal-50)] text-[var(--color-teal-700)]"
-                    : "border-[var(--color-hairline)] text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)]"
-                }`}
-              >
-                <PanelRight size={12} aria-hidden /> Findings
-              </button>
-            </div>
-          )}
-          {onMap && outsideCity && (
-            <span className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900">
+        )}
+
+        <div className="ml-auto flex items-center gap-2">
+          {onMap && planner && outsideCity && (
+            <span className="hidden items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900 sm:flex">
               <TriangleAlert size={12} aria-hidden />
-              Your pin is outside Baltimore City
+              Outside city
             </span>
           )}
-          {onMap && error && (
-            <span className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-medium text-red-800">
+          {onMap && planner && error && (
+            <span className="hidden max-w-48 truncate items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-medium text-red-800 md:flex">
               <TriangleAlert size={12} aria-hidden />
               {error}
             </span>
           )}
-          <a
-            href="/api/health"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-[var(--color-navy-400)] underline hover:text-[var(--color-teal-700)]"
-          >
-            Health
-          </a>
+          {onMap && planner && (
+            <div className="flex gap-1">
+              <PanelToggle
+                pressed={showPlan}
+                onClick={() => setShowPlan((v) => !v)}
+                icon={PanelLeft}
+                label="Plan"
+              />
+              <PanelToggle
+                pressed={showFindings}
+                onClick={() => setShowFindings((v) => !v)}
+                icon={PanelRight}
+                label="Analysis"
+              />
+              <PanelToggle
+                pressed={showAssistant}
+                onClick={() => setShowAssistant((v) => !v)}
+                icon={Sparkles}
+                label="Ask"
+              />
+            </div>
+          )}
+          {onMap && planner && (
+            <ExportMenu request={request} disabled={!assessment} />
+          )}
+          <AboutMenu />
         </div>
       </header>
 
@@ -244,45 +313,70 @@ export default function PantryTwinApp() {
           id="view-panel-map"
           role="tabpanel"
           aria-labelledby="view-tab-map"
-          className="flex min-h-0 flex-1"
+          className="flex min-h-0 flex-1 flex-col"
         >
-          <aside
-            className={`${showPlan ? "block" : "hidden"} w-72 shrink-0 border-r border-[var(--color-hairline)]`}
-          >
-            <PlanPanel
-              plan={plan}
-              onChange={setPlan}
-              proposed={proposed}
-              referenceName={assessment?.reference?.pantry.name ?? null}
-              onResetPlan={() => setPlan(DEFAULT_OPERATING_PLAN)}
-            />
-          </aside>
-
-          <main className="flex min-w-0 flex-1 flex-col">
+          {mode === "network" ? (
             <div className="min-h-0 flex-1">
-              <MapView
-                proposed={proposed}
-                reference={referencePin}
-                catchmentRadiusMeters={plan.catchmentRadiusMeters}
-                onMoveProposed={handleMove}
-                onSelectReference={handleSelectReference}
-                onReset={handleReset}
-              />
+              <NetworkTwin />
             </div>
-            <div className="h-56 shrink-0 border-t border-[var(--color-hairline)]">
-              <ExplanationPanel assessment={assessment} request={request} />
-            </div>
-          </main>
+          ) : (
+            <>
+              <div className="flex min-h-0 flex-1">
+                <aside
+                  className={`${showPlan ? "block" : "hidden"} w-72 shrink-0 border-r border-[var(--color-hairline)]`}
+                >
+                  <PlanPanel
+                    plan={plan}
+                    onChange={setPlan}
+                    onResetPlan={() => setPlan(DEFAULT_OPERATING_PLAN)}
+                  />
+                </aside>
 
-          <aside
-            className={`${showFindings ? "block" : "hidden"} w-80 shrink-0 border-l border-[var(--color-hairline)]`}
-          >
-            <FindingsPanel
-              assessment={assessment}
-              loading={loading}
-              onClearReference={() => setReferenceId(null)}
-            />
-          </aside>
+                <main className="flex min-w-0 flex-1 flex-col">
+                  <div className="min-h-0 flex-1">
+                    <MapView
+                      proposed={proposed}
+                      reference={referencePin}
+                      catchmentRadiusMeters={plan.catchmentRadiusMeters}
+                      onMoveProposed={handleMove}
+                      onSelectReference={handleSelectReference}
+                      onReset={handleReset}
+                    />
+                  </div>
+                  {showAssistant && (
+                    <div className="h-64 shrink-0 border-t border-[var(--color-hairline)]">
+                      <ExplanationPanel
+                        assessment={assessment}
+                        request={request}
+                        tab={inspectorTab}
+                        onTabChange={setInspectorTab}
+                      />
+                    </div>
+                  )}
+                </main>
+
+                <aside
+                  className={`${showFindings ? "block" : "hidden"} w-80 shrink-0 border-l border-[var(--color-hairline)]`}
+                >
+                  <FindingsPanel
+                    assessment={assessment}
+                    loading={loading}
+                    onSelectReference={(id) => handleSelectReference(id)}
+                    onClearReference={() => setReferenceId(null)}
+                  />
+                </aside>
+              </div>
+
+              <StatusBar
+                lat={proposed.lat}
+                lng={proposed.lng}
+                catchmentRadiusMeters={plan.catchmentRadiusMeters}
+                assessment={assessment}
+                loading={loading}
+                onOpenSources={openSources}
+              />
+            </>
+          )}
         </div>
       ) : (
         <div

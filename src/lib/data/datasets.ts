@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { SourceRecord } from "@/lib/contracts";
 
 /**
  * Server-side access to the cached public datasets produced by
- * `npm run ingest`. Files are read once per process and kept in memory.
+ * `npm run ingest`. Files are kept in memory until their mtimes change, so a
+ * fresh ingest (new landing URLs, ACS join, and so on) is picked up without
+ * inventing fallback values.
  *
  * If a file is absent the dataset is reported as unavailable. Callers must
  * degrade to "unavailable" measures rather than substituting zeros.
@@ -78,6 +80,14 @@ export interface Datasets {
   };
 }
 
+const CACHED_FILES = [
+  "tracts.json",
+  "services.json",
+  "city-boundary.json",
+  "manifest.json",
+  "validation-report.json",
+] as const;
+
 function readJson<T>(file: string, fallback: T): T {
   const full = path.join(DATA_DIR, file);
   if (!existsSync(full)) return fallback;
@@ -88,10 +98,25 @@ function readJson<T>(file: string, fallback: T): T {
   }
 }
 
+function processedSignature(): string {
+  return CACHED_FILES.map((file) => {
+    const full = path.join(DATA_DIR, file);
+    try {
+      const st = statSync(full);
+      return `${file}:${st.mtimeMs}:${st.size}`;
+    } catch {
+      return `${file}:missing`;
+    }
+  }).join("|");
+}
+
 let cache: Datasets | null = null;
+let cacheSignature = "";
 
 export function loadDatasets(): Datasets {
-  if (cache) return cache;
+  const signature = processedSignature();
+  if (cache && cacheSignature === signature) return cache;
+  cacheSignature = signature;
 
   const tracts = readJson<TractRecord[]>("tracts.json", []);
   const services = readJson<ServiceRecord[]>("services.json", []);
@@ -129,4 +154,5 @@ export function sourcesFor(ids: string[]): SourceRecord[] {
 /** Test seam: clears the in-process dataset cache. */
 export function resetDatasetCache(): void {
   cache = null;
+  cacheSignature = "";
 }

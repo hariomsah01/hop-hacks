@@ -23,7 +23,7 @@ import type {
   ScenarioName,
   SiteAssessmentResult,
 } from "@/lib/contracts";
-import { formatMeasure, formatValue } from "@/lib/format";
+import { formatValue } from "@/lib/format";
 import {
   MeasureValue,
   MetricRow,
@@ -78,10 +78,12 @@ function ConsequenceCard({ consequence }: { consequence: Consequence }) {
 export default function FindingsPanel({
   assessment,
   loading,
+  onSelectReference,
   onClearReference,
 }: {
   assessment: SiteAssessmentResult | null;
   loading: boolean;
+  onSelectReference: (id: string) => void;
   onClearReference: () => void;
 }) {
   const [scenario, setScenario] = useState<ScenarioName>("medium");
@@ -90,7 +92,7 @@ export default function FindingsPanel({
     return (
       <div className="panel-scroll h-full overflow-y-auto bg-[var(--color-panel)] p-4">
         <h2 className="text-sm font-semibold text-[var(--color-navy-800)]">
-          Findings
+          Analysis
         </h2>
         <p className="mt-2 text-xs text-[var(--color-navy-400)]">
           {loading
@@ -118,7 +120,7 @@ export default function FindingsPanel({
       <div className="mb-3 flex items-center gap-1.5">
         <ScrollText size={15} className="text-[var(--color-teal-600)]" aria-hidden />
         <h2 className="text-sm font-semibold text-[var(--color-navy-800)]">
-          What happens if you open here
+          Analysis
         </h2>
         {loading && (
           <span className="ml-auto h-3 w-3 animate-spin rounded-full border-2 border-[var(--color-teal-600)] border-t-transparent" />
@@ -139,13 +141,36 @@ export default function FindingsPanel({
                 </p>
                 <p className="text-[11px] text-[var(--color-navy-500)]">
                   {reference.pantry.address ?? "address not published"} ·{" "}
-                  {reference.pantry.distanceMeters.toLocaleString()} m away
+                  {reference.pantry.distanceMeters.toLocaleString("en-US")} m away
                 </p>
               </>
             ) : (
-              <p className="text-xs text-[var(--color-navy-500)]">
-                Click a navy dot on the map to pick a real pantry.
-              </p>
+              <div>
+                <p className="text-xs text-[var(--color-navy-500)]">
+                  Click a listed pantry on the map to compare.
+                </p>
+                {assessment.proposed.listedServices.length > 0 && (
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {assessment.proposed.listedServices.slice(0, 4).map((svc) => (
+                      <li key={svc.id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelectReference(svc.id)}
+                          className="w-full rounded-md border border-[var(--color-hairline)] bg-white px-2 py-1.5 text-left hover:border-[var(--color-reference-600)] hover:bg-white"
+                        >
+                          <span className="block truncate text-[11px] font-semibold text-[var(--color-navy-800)]">
+                            {svc.name}
+                          </span>
+                          <span className="text-[10px] text-[var(--color-navy-400)]">
+                            {svc.distanceMeters.toLocaleString("en-US")} m away
+                            {svc.address ? ` · ${svc.address}` : ""}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </div>
           {reference && (
@@ -163,8 +188,8 @@ export default function FindingsPanel({
           <p className="mt-2 flex gap-1.5 text-[11px] leading-snug text-[var(--color-navy-500)]">
             <CircleHelp size={12} className="mt-0.5 shrink-0" aria-hidden />
             <span>
-              Its location is published. Its capacity, staffing and current
-              hours are not, so its operations are never modelled here.
+              Location is published; capacity, staffing and current hours are
+              not, so its operations are not modelled.
             </span>
           </p>
         )}
@@ -172,9 +197,11 @@ export default function FindingsPanel({
 
       {/* ------------------------------------------------------ consequences */}
       <section className="mb-4">
-        <SectionTitle>The report</SectionTitle>
+        <SectionTitle>Report</SectionTitle>
         <div className="flex flex-col gap-1.5">
-          {consequences.map((c) => (
+          {consequences
+            .filter((c) => c.id !== "no-reference")
+            .map((c) => (
             <ConsequenceCard key={c.id} consequence={c} />
           ))}
         </div>
@@ -193,9 +220,8 @@ export default function FindingsPanel({
           </div>
           <MeasureValue measure={reach.netNewPopulation} emphasis />
           <p className="mt-0.5 text-[11px] leading-snug text-[var(--color-navy-500)]">
-            People who would come into range who cannot already reach{" "}
-            {referenceName ?? "an existing pantry"}. Reach is geography, not
-            attendance.
+            People newly inside this straight-line ring who are outside every
+            listed pantry&apos;s ring. Geography, not attendance.
           </p>
         </div>
 
@@ -204,7 +230,15 @@ export default function FindingsPanel({
           proposed={reach.proposedPopulation}
           reference={reach.referencePopulation}
           referenceName={referenceName}
-          hint="Area-weighted from census tracts. These two numbers overlap and must never be added together."
+          hint="Area-weighted from census tracts. Do not add these together."
+        />
+        <MetricRow
+          label="Poverty rate in your catchment"
+          measure={assessment.proposed.povertyRate}
+        />
+        <MetricRow
+          label="Households without a vehicle"
+          measure={assessment.proposed.noVehicleHouseholdShare}
         />
         <MetricRow
           label="Duplicated reach"
@@ -218,7 +252,7 @@ export default function FindingsPanel({
         <MetricRow
           label="People outside every listed pantry's ring"
           measure={reach.populationOutsideAllListings}
-          hint="The strongest coverage-gap signal available. The published roster may be incomplete, and a listing is not proof a site is open."
+          hint="Published roster may be incomplete; a listing is not proof a site is open."
         />
 
         {reach.newlyCoveredTracts.length > 0 && (
@@ -236,7 +270,7 @@ export default function FindingsPanel({
                   <span className="shrink-0 tabular-nums text-[var(--color-navy-800)]">
                     {t.newPopulation === null
                       ? "—"
-                      : `${Math.round(t.newPopulation).toLocaleString()} people`}
+                      : `${Math.round(t.newPopulation).toLocaleString("en-US")} people`}
                   </span>
                 </li>
               ))}
@@ -270,15 +304,9 @@ export default function FindingsPanel({
           Your pantry, 28 days
         </SectionTitle>
 
-        <p className="mb-2 rounded-md bg-[var(--color-canvas)] px-2 py-1.5 text-[11px] leading-snug text-[var(--color-navy-500)]">
-          Only your site is simulated. The existing pantry&apos;s resources are
-          unknown, so modelling it would mean inventing them.
-        </p>
-
         <MetricRow
           label="Assumed weekly requests"
           measure={bucket.proposed.assumedWeeklyHouseholdRequests}
-          hint="A participation assumption applied to catchment population, not a measurement of demand."
         />
         <MetricRow
           label="Household visits served"
@@ -345,11 +373,6 @@ export default function FindingsPanel({
             </ResponsiveContainer>
           </div>
         )}
-        <p className="mt-1 text-[11px] leading-snug text-[var(--color-navy-400)]">
-          Demand is an assumption swept across three participation rates, not a
-          forecast of who would arrive. Assumed weekly requests at this setting:{" "}
-          {formatMeasure(bucket.proposed.assumedWeeklyHouseholdRequests)}.
-        </p>
       </section>
     </div>
   );

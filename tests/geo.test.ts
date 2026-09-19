@@ -24,6 +24,20 @@ describe("cached datasets", () => {
     const data = loadDatasets();
     expect(data.tracts.every((t) => typeof t.geoid === "string")).toBe(true);
   });
+
+  it("points Baltimore landings at ArcGIS item pages, not Hub catalog searches", () => {
+    const data = loadDatasets();
+    const baltimore = data.sources.filter((source) =>
+      source.publisher.includes("Baltimore City"),
+    );
+    expect(baltimore.length).toBeGreaterThanOrEqual(4);
+    for (const source of baltimore) {
+      expect(source.landingUrl).toMatch(
+        /^https:\/\/www\.arcgis\.com\/home\/item\.html\?id=[a-f0-9]+$/i,
+      );
+      expect(source.landingUrl).not.toContain("search?q=");
+    }
+  });
 });
 
 describe("analyzeLocation", () => {
@@ -103,6 +117,14 @@ describe("analyzeLocation", () => {
     if (!loadDatasets().availability.tractPoverty) {
       expect(result.povertyRate.status).toBe("unavailable");
       expect(result.povertyRate.value).toBeNull();
+    } else {
+      expect(result.povertyRate.status).toBe("estimated");
+      expect(result.povertyRate.value).not.toBeNull();
+      expect(result.povertyRate.value).toBeGreaterThanOrEqual(0);
+      expect(result.povertyRate.value).toBeLessThanOrEqual(1);
+      expect(result.povertyRate.sourceIds).toContain("acs");
+      expect(result.noVehicleHouseholdShare.status).toBe("estimated");
+      expect(result.noVehicleHouseholdShare.value).not.toBeNull();
     }
     // USDA food-access flags are explicitly out of scope for this build.
     expect(result.lowIncomeLowAccessTractCount.value).toBeNull();

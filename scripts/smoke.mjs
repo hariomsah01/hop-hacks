@@ -124,8 +124,13 @@ check("consequences: demand is always declared an assumption",
 // Provenance rules that must survive serialisation.
 const poverty = assessment.proposed.povertyRate;
 check("provenance: unavailable stays null, never zero",
-  poverty.value === null ? poverty.status === "unavailable" : true,
-  `povertyRate=${poverty.value}`);
+  poverty.value === null ? poverty.status === "unavailable" : poverty.status !== "unavailable",
+  `povertyRate=${poverty.value} status=${poverty.status}`);
+if (poverty.value !== null) {
+  check("acs: poverty rate is an estimated share from ACS",
+    poverty.status === "estimated" && poverty.value >= 0 && poverty.value <= 1 &&
+    poverty.sourceIds.includes("acs"));
+}
 
 const flat = JSON.stringify(assessment);
 check("safety: no probability-of-success language",
@@ -155,6 +160,26 @@ check("export: numbers match the display",
   markdown.includes(Math.round(proposedPop.value).toLocaleString()) ||
   markdown.includes(String(Math.round(proposedPop.value))),
   "catchment population appears in the report");
+
+// ----------------------------------------------------------------- sources
+const sourcesRes = await fetch(`${base}/api/sources`);
+check("sources: HTTP 200", sourcesRes.status === 200, `status ${sourcesRes.status}`);
+const sourceCatalog = await sourcesRes.json();
+check("sources: manifest has entries", Array.isArray(sourceCatalog.sources) &&
+  sourceCatalog.sources.length >= 3, `${sourceCatalog.sources?.length ?? 0} sources`);
+check("sources: every ingested dataset has a publisher landing URL",
+  sourceCatalog.sources.every((s) => typeof s.landingUrl === "string" &&
+    /^https?:\/\//.test(s.landingUrl)));
+check("sources: Baltimore landings are ArcGIS item pages, not catalog searches",
+  sourceCatalog.sources
+    .filter((s) => String(s.publisher ?? "").includes("Baltimore City"))
+    .every((s) =>
+      /arcgis\.com\/home\/item\.html\?id=[a-f0-9]+/i.test(s.landingUrl) &&
+      !s.landingUrl.includes("search?q=")));
+check("sources: blocked entries still name a publisher page",
+  !Array.isArray(sourceCatalog.validation?.blocked) ||
+  sourceCatalog.validation.blocked.every((b) =>
+    typeof b.landingUrl === "string" && /^https?:\/\//.test(b.landingUrl)));
 
 // --------------------------------------------------------------- assistant
 const assistant = await post("/api/assistant", {

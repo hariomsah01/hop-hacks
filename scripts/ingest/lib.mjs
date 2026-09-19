@@ -27,6 +27,10 @@ export async function fetchWithRetry(url, { attempts = 3, timeoutMs = 60_000 } =
 export async function fetchJson(url, options) {
   const res = await fetchWithRetry(url, options);
   const text = await res.text();
+  const htmlTitle = text.match(/<title>([^<]+)<\/title>/i)?.[1]?.trim();
+  if (htmlTitle && /key/i.test(htmlTitle)) {
+    throw new Error(htmlTitle);
+  }
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -44,9 +48,48 @@ export function sha256(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
+/**
+ * Pretty-print cached datasets: one indented object per record, compact
+ * arrays of primitives (source IDs, coordinate rings) so GeoJSON stays
+ * readable instead of one number per line.
+ */
+export function stringifyJson(value, indent = 2) {
+  const pad = (depth) => " ".repeat(indent * depth);
+
+  const compact = (node) =>
+    Array.isArray(node) &&
+    node.every(
+      (item) =>
+        item === null ||
+        ["string", "number", "boolean"].includes(typeof item) ||
+        compact(item),
+    );
+
+  const walk = (node, depth) => {
+    if (node === null || typeof node !== "object") {
+      return JSON.stringify(node);
+    }
+    if (Array.isArray(node)) {
+      if (node.length === 0 || compact(node)) return JSON.stringify(node);
+      const inner = node
+        .map((item) => `${pad(depth + 1)}${walk(item, depth + 1)}`)
+        .join(",\n");
+      return `[\n${inner}\n${pad(depth)}]`;
+    }
+    const keys = Object.keys(node);
+    if (keys.length === 0) return "{}";
+    const inner = keys
+      .map((key) => `${pad(depth + 1)}${JSON.stringify(key)}: ${walk(node[key], depth + 1)}`)
+      .join(",\n");
+    return `{\n${inner}\n${pad(depth)}}`;
+  };
+
+  return `${walk(value, 0)}\n`;
+}
+
 export async function writeJson(path, data) {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(data), "utf8");
+  await writeFile(path, stringifyJson(data), "utf8");
 }
 
 /**
@@ -79,6 +122,25 @@ const ARCGIS_ORG =
 
 export function layerUrl(service, layer = 0) {
   return `${ARCGIS_ORG}/${service}/FeatureServer/${layer}`;
+}
+
+/**
+ * Publisher page for a hosted Feature Service. Open Baltimore Hub catalog
+ * search on the ArcGIS service name returns nothing, and Hub dataset pages
+ * 404 when the item is unlisted (`listed: false`). The ArcGIS item page is
+ * what FeatureServer.serviceItemId actually points at.
+ */
+export function publisherItemUrl(serviceItemId) {
+  if (!serviceItemId) return null;
+  return `https://www.arcgis.com/home/item.html?id=${encodeURIComponent(serviceItemId)}`;
+}
+
+export async function describeService(service) {
+  const { parsed } = await fetchJson(`${ARCGIS_ORG}/${service}/FeatureServer?f=json`);
+  return {
+    serviceItemId: parsed.serviceItemId ?? null,
+    serviceDescription: parsed.serviceDescription ?? "",
+  };
 }
 
 export async function describeLayer(service, layer = 0) {
