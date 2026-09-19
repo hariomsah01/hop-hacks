@@ -103,6 +103,14 @@ describe("analyzeLocation", () => {
     if (!loadDatasets().availability.tractPoverty) {
       expect(result.povertyRate.status).toBe("unavailable");
       expect(result.povertyRate.value).toBeNull();
+    } else {
+      expect(result.povertyRate.status).toBe("estimated");
+      expect(result.povertyRate.value).not.toBeNull();
+      expect(result.povertyRate.value).toBeGreaterThanOrEqual(0);
+      expect(result.povertyRate.value).toBeLessThanOrEqual(1);
+      expect(result.povertyRate.sourceIds).toContain("acs");
+      expect(result.noVehicleHouseholdShare.status).toBe("estimated");
+      expect(result.noVehicleHouseholdShare.value).not.toBeNull();
     }
     // USDA food-access flags are explicitly out of scope for this build.
     expect(result.lowIncomeLowAccessTractCount.value).toBeNull();

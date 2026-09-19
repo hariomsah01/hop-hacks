@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { loadDatasets } from "@/lib/data/datasets";
 
+export const dynamic = "force-dynamic";
+
 /**
  * The source manifest and ingestion validation report. Exposed so a reviewer
  * can check provenance, vintages and which sources were blocked without

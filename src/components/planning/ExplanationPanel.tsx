@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   AlertTriangle,
   Download,
+  ExternalLink,
   FileJson,
   ListChecks,
   Send,
@@ -285,15 +286,29 @@ export default function ExplanationPanel({
                   <div>Publisher: {s.publisher}</div>
                   <div>Data vintage: {s.dataVintage}</div>
                   <div>Geography: {s.geographicVintage}</div>
-                  <div>Retrieved: {new Date(s.retrievedAt).toLocaleString()}</div>
-                  <a
-                    href={s.landingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block text-[var(--color-teal-700)] underline"
-                  >
-                    Dataset landing page
-                  </a>
+                  <div>Retrieved: {s.retrievedAt}</div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5">
+                    <a
+                      href={s.landingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 text-[var(--color-teal-700)] underline"
+                    >
+                      Publisher page
+                      <ExternalLink size={9} aria-hidden />
+                    </a>
+                    {s.downloadUrl && (
+                      <a
+                        href={s.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 text-[var(--color-teal-700)] underline"
+                      >
+                        Direct download
+                        <ExternalLink size={9} aria-hidden />
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

@@ -34,6 +34,8 @@ import ExplanationPanel from "@/components/planning/ExplanationPanel";
 import FindingsPanel from "@/components/planning/FindingsPanel";
 import PlanPanel from "@/components/planning/PlanPanel";
 import NetworkTwin from "@/components/network/NetworkTwin";
+import SourcesBar from "@/components/SourcesBar";
+import TracksBar from "@/components/TracksBar";
 
 /*
  * MapLibre uses browser APIs, so the map
@@ -382,6 +384,21 @@ export default function PantryTwinApp() {
 
             Network twin
           </button>
+      <header className="flex shrink-0 flex-col gap-2 border-b border-[var(--color-hairline)] bg-[var(--color-panel)] px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-2">
+          <MapPin size={18} className="mt-0.5 shrink-0 text-[var(--color-teal-600)]" aria-hidden />
+          <div className="min-w-0">
+            <h1 className="text-sm font-bold tracking-tight text-[var(--color-navy-800)]">
+              PantryTwin
+              <span className="ml-1.5 font-normal text-[var(--color-navy-400)]">
+                Would a new Baltimore pantry here add coverage?
+              </span>
+            </h1>
+            <div className="mt-1 flex flex-col gap-1">
+              <TracksBar />
+              <SourcesBar />
+            </div>
+          </div>
         </div>
 
         {/* RIGHT-SIDE HEADER CONTROLS */}
@@ -466,6 +483,14 @@ export default function PantryTwinApp() {
               </span>
             )}
 
+          <a
+            href="/api/sources"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-[var(--color-navy-400)] underline hover:text-[var(--color-teal-700)]"
+          >
+            Sources
+          </a>
           <a
             href="/api/health"
             target="_blank"
@@ -571,6 +596,23 @@ export default function PantryTwinApp() {
           </aside>
         </div>
       )}
+          </div>
+          <div className="h-56 shrink-0 border-t border-[var(--color-hairline)]">
+            <ExplanationPanel assessment={assessment} request={request} />
+          </div>
+        </main>
+
+        <aside
+          className={`${showFindings ? "block" : "hidden"} w-80 shrink-0 border-l border-[var(--color-hairline)]`}
+        >
+          <FindingsPanel
+            assessment={assessment}
+            loading={loading}
+            onSelectReference={(id) => handleSelectReference(id)}
+            onClearReference={() => setReferenceId(null)}
+          />
+        </aside>
+      </div>
     </div>
   );
 }
