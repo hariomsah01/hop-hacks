@@ -11,10 +11,21 @@ import {
   type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Layers, LocateFixed, RotateCcw } from "lucide-react";
-import { BALTIMORE_CITY_BBOX, BALTIMORE_CITY_CENTER } from "@/lib/contracts";
-import { applyPressureToCollection } from "@/lib/geo/pressure";
+import {
+  BALTIMORE_CITY_BBOX,
+  BALTIMORE_CITY_CENTER,
+  type PlacementScore,
+} from "@/lib/contracts";
+import { mergePlacementIntoCollection } from "@/lib/geo/placement";
+import {
+  MARYLAND_FOOD_BANK_ORG_LABEL,
+  defaultSelectedServiceId,
+  idsToHighlight,
+  isMarylandFoodBankSite,
+  marylandFoodBankIds,
+} from "@/lib/orgs/marylandFoodBank";
 
 export interface SitePoint {
   lng: number;
@@ -74,6 +85,9 @@ const FALLBACK_STYLE: StyleSpecification = {
 
 /** The proposed pin and its straight-line catchment. */
 const PROPOSED_COLOUR = "#c2410c";
+const LISTED_COLOUR = "#0f2540";
+const ORG_COLOUR = "#0f766e";
+const SELECTED_OUTLINE = "#111111";
 
 function formatRadiusKm(meters: number): string {
   const km = meters / 1000;
@@ -160,8 +174,14 @@ export default function MapView({
   const ready = styleEpoch > 0;
   const [layers, setLayers] = useState<LayerPayload | null>(null);
   const [showTracts, setShowTracts] = useState(false);
-  const [showServices, setShowServices] = useState(false);
-  const [showPressure, setShowPressure] = useState(true);
+  const [showServices, setShowServices] = useState(true);
+  const [showPlacement, setShowPlacement] = useState(true);
+  const [placement, setPlacement] = useState<PlacementScore[] | null>(null);
+  const [placementLoading, setPlacementLoading] = useState(true);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
+    null,
+  );
+  const styledServiceIdsRef = useRef<Set<string>>(new Set());
 
   // Keep the latest callbacks without re-running the map setup effect.
   const onMoveRef = useRef(onMoveProposed);
@@ -172,7 +192,7 @@ export default function MapView({
   // ------------------------------------------------------------- load layers
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/layers?v=pressure-0.1.0")
+    fetch("/api/layers?v=placement-0.1.0")
       .then((res) => {
         if (!res.ok) throw new Error(`Layer request failed (${res.status})`);
         return res.json();
@@ -187,6 +207,67 @@ export default function MapView({
       cancelled = true;
     };
   }, []);
+
+  const orgIds = useMemo(
+    () => (layers ? marylandFoodBankIds(layers.services) : new Set<string>()),
+    [layers],
+  );
+
+  const selectedIsOrg =
+    selectedServiceId !== null && orgIds.has(selectedServiceId);
+
+  const selectedServiceName = useMemo(() => {
+    if (!layers || !selectedServiceId) return null;
+    for (const feature of layers.services.features) {
+      if (feature.properties?.id === selectedServiceId) {
+        return typeof feature.properties.name === "string"
+          ? feature.properties.name
+          : null;
+      }
+    }
+    return null;
+  }, [layers, selectedServiceId]);
+
+  useEffect(() => {
+    if (!layers || selectedServiceId) return;
+    const fallback = defaultSelectedServiceId(layers.services);
+    if (fallback) setSelectedServiceId(fallback);
+  }, [layers, selectedServiceId]);
+
+  // ---------------------------------------------- placement scores vs ring
+  useEffect(() => {
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      setPlacementLoading(true);
+      fetch(
+        `/api/placement?catchmentRadiusMeters=${catchmentRadiusMeters}`,
+      )
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`Placement request failed (${res.status})`);
+          }
+          return res.json() as Promise<{ tracts: PlacementScore[] }>;
+        })
+        .then((payload) => {
+          if (cancelled) return;
+          setPlacement(payload.tracts);
+          setError((current) =>
+            current?.startsWith("Could not score") ? null : current,
+          );
+        })
+        .catch((err: Error) => {
+          if (cancelled) return;
+          setError(`Could not score placement: ${err.message}`);
+        })
+        .finally(() => {
+          if (!cancelled) setPlacementLoading(false);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [catchmentRadiusMeters]);
 
   // ------------------------------------------------------------ create map
   useEffect(() => {
@@ -266,7 +347,7 @@ export default function MapView({
     if (!map.getSource("tracts")) {
       map.addSource("tracts", {
         type: "geojson",
-        data: applyPressureToCollection(layers.tracts, catchmentRadiusMeters),
+        data: mergePlacementIntoCollection(layers.tracts, placement ?? []),
       });
       map.addLayer({
         id: "tracts-fill",
@@ -293,17 +374,17 @@ export default function MapView({
         },
       });
       map.addLayer({
-        id: "pressure-fill",
+        id: "placement-fill",
         type: "fill",
         source: "tracts",
         paint: {
           "fill-color": [
             "case",
-            ["==", ["typeof", ["get", "pressureIndex"]], "number"],
+            ["==", ["typeof", ["get", "placementIndex"]], "number"],
             [
               "interpolate",
               ["linear"],
-              ["get", "pressureIndex"],
+              ["get", "placementIndex"],
               0, "#fff7ed",
               25, "#fdba74",
               50, "#f97316",
@@ -314,8 +395,8 @@ export default function MapView({
           ],
           "fill-opacity": [
             "case",
-            ["==", ["typeof", ["get", "pressureIndex"]], "number"],
-            ["interpolate", ["linear"], ["get", "pressureIndex"], 0, 0.18, 100, 0.72],
+            ["==", ["typeof", ["get", "placementIndex"]], "number"],
+            ["interpolate", ["linear"], ["get", "placementIndex"], 0, 0.18, 100, 0.72],
             0.2,
           ],
         },
@@ -342,31 +423,38 @@ export default function MapView({
             ? props.name
             : "Census tract";
         const index =
-          typeof props.pressureIndex === "number" ? props.pressureIndex : null;
+          typeof props.placementIndex === "number" ? props.placementIndex : null;
+        const netNew =
+          typeof props.netNewPeople === "number" ? props.netNewPeople : null;
         const poverty =
-          typeof props.povertyRate === "number" ? props.povertyRate : null;
-        const people =
-          typeof props.population === "number" ? props.population : null;
-        const nearest =
-          typeof props.nearestListedMeters === "number"
-            ? props.nearestListedMeters
+          typeof props.povertyOnNewGround === "number"
+            ? props.povertyOnNewGround
             : null;
+        const noVehicle =
+          typeof props.noVehicleOnNewGround === "number"
+            ? props.noVehicleOnNewGround
+            : null;
+        const covered =
+          typeof props.coveredShare === "number" ? props.coveredShare : null;
         const figure = (value: number | null, suffix: string) =>
           value === null ? "Unavailable" : `${value}${suffix}`;
+        const count = (value: number | null) =>
+          value === null ? "Unavailable" : value.toLocaleString("en-US");
         tractPopup
           .setLngLat(event.lngLat)
           .setHTML(
             `<strong style="color:#0f2540">${escape(label)}</strong><br/>` +
-              `<span style="font-size:12px;color:#3d5a7d">Coverage pressure: ${figure(index, " / 100")} <em>(estimated)</em></span><br/>` +
-              `<span style="font-size:12px;color:#3d5a7d">Poverty rate: ${poverty === null ? "Unavailable" : `${(poverty * 100).toFixed(1)}%`} <em>(sourced)</em></span><br/>` +
-              `<span style="font-size:12px;color:#3d5a7d">People: ${people === null ? "Unavailable" : people.toLocaleString("en-US")} <em>(sourced)</em></span><br/>` +
-              `<span style="font-size:12px;color:#3d5a7d">Nearest listed pantry: ${nearest === null ? "Unavailable" : `${Math.round(nearest)} m`} <em>(straight-line)</em></span>`,
+              `<span style="font-size:12px;color:#3d5a7d">Placement score: ${figure(index, " / 100")} <em>(estimated)</em></span><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Net new reach: ${count(netNew)} people <em>(estimated)</em></span><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Poverty on that ground: ${count(poverty)} people <em>(estimated)</em></span><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Households without a vehicle: ${count(noVehicle)} <em>(estimated)</em></span><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Share of this tract already inside a listed ring: ${covered === null ? "Unavailable" : `${(covered * 100).toFixed(0)}%`} <em>(estimated)</em></span>`,
           )
           .addTo(map);
       };
-      map.on("mouseenter", "pressure-fill", showTractPopup);
+      map.on("mouseenter", "placement-fill", showTractPopup);
       map.on("mouseenter", "tracts-fill", showTractPopup);
-      map.on("mouseleave", "pressure-fill", () => {
+      map.on("mouseleave", "placement-fill", () => {
         map.getCanvas().style.cursor = "";
         tractPopup.remove();
       });
@@ -387,17 +475,62 @@ export default function MapView({
     }
 
     if (!map.getSource("services")) {
-      map.addSource("services", { type: "geojson", data: layers.services });
+      map.addSource("services", {
+        type: "geojson",
+        data: layers.services,
+        promoteId: "id",
+      });
       map.addLayer({
         id: "services-points",
         type: "circle",
         source: "services",
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 15, 7],
-          "circle-color": "#0f2540",
-          "circle-opacity": 0.75,
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 1,
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            [
+              "case",
+              ["boolean", ["feature-state", "active"], false],
+              7,
+              ["boolean", ["feature-state", "org"], false],
+              6,
+              4,
+            ],
+            15,
+            [
+              "case",
+              ["boolean", ["feature-state", "active"], false],
+              11,
+              ["boolean", ["feature-state", "org"], false],
+              9,
+              7,
+            ],
+          ],
+          "circle-color": [
+            "case",
+            ["boolean", ["feature-state", "active"], false],
+            ORG_COLOUR,
+            ["boolean", ["feature-state", "org"], false],
+            ORG_COLOUR,
+            LISTED_COLOUR,
+          ],
+          "circle-opacity": 0.9,
+          "circle-stroke-color": [
+            "case",
+            ["boolean", ["feature-state", "active"], false],
+            SELECTED_OUTLINE,
+            "#ffffff",
+          ],
+          "circle-stroke-width": [
+            "case",
+            ["boolean", ["feature-state", "active"], false],
+            3,
+            ["boolean", ["feature-state", "org"], false],
+            2,
+            1,
+          ],
         },
       });
 
@@ -415,10 +548,14 @@ export default function MapView({
         const notes = props.publishedHours
           ? `${escape(props.publishedHours)} <em>(publisher note, not verified)</em>`
           : "<em>no hours or capacity published</em>";
+        const orgLine = isMarylandFoodBankSite(props.name)
+            ? `<span style="font-size:12px;color:#0f766e">${escape(MARYLAND_FOOD_BANK_ORG_LABEL)}</span><br/>`
+            : "";
         popup
           .setLngLat(event.lngLat)
           .setHTML(
             `<strong style="color:#0f2540">${escape(props.name ?? "Listing")}</strong><br/>` +
+              orgLine +
               `<span style="font-size:12px;color:#3d5a7d">${escape(props.address ?? "address not published")}</span><br/>` +
               `<span style="font-size:12px;color:#3d5a7d">${notes}</span>`,
           )
@@ -428,19 +565,23 @@ export default function MapView({
         map.getCanvas().style.cursor = "";
         popup.remove();
       });
+      map.on("click", "services-points", (event) => {
+        const id = event.features?.[0]?.properties?.id;
+        if (typeof id === "string") setSelectedServiceId(id);
+      });
     }
   }, [ready, layers, styleEpoch]);
 
-  // ------------------------------------------ pressure scores vs assumed ring
+  // ------------------------------------------ placement scores vs assumed ring
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !layers) return;
     const source = map.getSource("tracts") as GeoJSONSource | undefined;
     if (!source) return;
     source.setData(
-      applyPressureToCollection(layers.tracts, catchmentRadiusMeters),
+      mergePlacementIntoCollection(layers.tracts, placement ?? []),
     );
-  }, [ready, layers, catchmentRadiusMeters, styleEpoch]);
+  }, [ready, layers, placement, styleEpoch]);
 
   // ------------------------------------------------------- layer visibility
   useEffect(() => {
@@ -453,7 +594,7 @@ export default function MapView({
         showTracts ? "visible" : "none",
       );
     }
-    const outlineOn = showTracts || showPressure;
+    const outlineOn = showTracts || showPlacement;
     if (map.getLayer("tracts-outline")) {
       map.setLayoutProperty(
         "tracts-outline",
@@ -461,19 +602,19 @@ export default function MapView({
         outlineOn ? "visible" : "none",
       );
     }
-  }, [ready, showTracts, showPressure, layers, styleEpoch]);
+  }, [ready, showTracts, showPlacement, layers, styleEpoch]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    if (map.getLayer("pressure-fill")) {
+    if (map.getLayer("placement-fill")) {
       map.setLayoutProperty(
-        "pressure-fill",
+        "placement-fill",
         "visibility",
-        showPressure ? "visible" : "none",
+        showPlacement ? "visible" : "none",
       );
     }
-  }, [ready, showPressure, layers, styleEpoch]);
+  }, [ready, showPlacement, layers, styleEpoch]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -486,6 +627,29 @@ export default function MapView({
       );
     }
   }, [ready, showServices, layers, styleEpoch]);
+
+  // --------------------------------------------- selected pantry / org style
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !map.getSource("services")) return;
+
+    const previous = styledServiceIdsRef.current;
+    for (const id of previous) {
+      map.removeFeatureState({ source: "services", id });
+    }
+
+    const next = idsToHighlight(selectedServiceId, orgIds);
+    for (const id of next) {
+      map.setFeatureState(
+        { source: "services", id },
+        {
+          active: id === selectedServiceId,
+          org: selectedIsOrg && id !== selectedServiceId,
+        },
+      );
+    }
+    styledServiceIdsRef.current = next;
+  }, [ready, layers, selectedServiceId, orgIds, selectedIsOrg, styleEpoch]);
 
   // ------------------------------------------------------ proposed site pin
   useEffect(() => {
@@ -609,11 +773,11 @@ export default function MapView({
         <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
           <input
             type="checkbox"
-            checked={showPressure}
-            onChange={(e) => setShowPressure(e.target.checked)}
+            checked={showPlacement}
+            onChange={(e) => setShowPlacement(e.target.checked)}
             className="accent-[var(--color-teal-600)]"
           />
-          Coverage pressure
+          Placement score
         </label>
         <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
           <input
@@ -633,6 +797,31 @@ export default function MapView({
           />
           Listed pantries
         </label>
+        {showServices && (
+          <div className="mb-0.5 ml-5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!layers) return;
+                const fallback = defaultSelectedServiceId(layers.services);
+                if (fallback) setSelectedServiceId(fallback);
+              }}
+              aria-pressed={selectedIsOrg}
+              className={`rounded px-1.5 py-0.5 text-left text-[10px] leading-snug ${
+                selectedIsOrg
+                  ? "bg-[var(--color-teal-50)] font-medium text-[var(--color-teal-700)]"
+                  : "text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)] hover:text-[var(--color-navy-800)]"
+              }`}
+            >
+              {MARYLAND_FOOD_BANK_ORG_LABEL}
+            </button>
+            {selectedServiceName && (
+              <p className="px-1.5 text-[10px] leading-snug text-[var(--color-navy-500)]">
+                {selectedServiceName}
+              </p>
+            )}
+          </div>
+        )}
         <div className="mt-2 border-t border-[var(--color-hairline)] pt-2">
           <label className="flex items-baseline justify-between gap-2 text-[11px]">
             <span className="font-medium text-[var(--color-navy-600)]">
@@ -656,10 +845,11 @@ export default function MapView({
             Assumed ring, not walking or drive time.
           </p>
         </div>
-        {showPressure && (
+        {showPlacement && (
           <div className="mt-2 border-t border-[var(--color-hairline)] pt-2">
             <p className="text-[10px] font-medium text-[var(--color-navy-600)]">
-              Coverage pressure
+              Placement score
+              {placementLoading ? " · updating" : ""}
             </p>
             <div
               className="mt-1 h-2 rounded-full"
@@ -674,8 +864,9 @@ export default function MapView({
               <span>Higher</span>
             </div>
             <p className="mt-1 text-[10px] leading-snug text-[var(--color-navy-400)]">
-              Estimated people × poverty × straight-line gap to the nearest
-              listed pantry.
+              Estimated if a pantry sat at the tract centre: net new people,
+              poverty on that new ground, and households without a vehicle,
+              equally weighted (assumed). Not attendance.
             </p>
           </div>
         )}
@@ -685,8 +876,22 @@ export default function MapView({
             Proposed
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#0f2540]" />
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: LISTED_COLOUR }} />
             Listed
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: ORG_COLOUR }} />
+            {MARYLAND_FOOD_BANK_ORG_LABEL}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{
+                background: ORG_COLOUR,
+                boxShadow: `0 0 0 2px ${SELECTED_OUTLINE}`,
+              }}
+            />
+            Selected site
           </span>
         </div>
       </div>

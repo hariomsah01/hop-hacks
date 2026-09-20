@@ -99,19 +99,39 @@ export const CatchmentOverlapSchema = z.object({
 export type CatchmentOverlap = z.infer<typeof CatchmentOverlapSchema>;
 
 /**
- * Tract-level coverage pressure. Estimated from published people, ACS
- * poverty, and straight-line distance to the nearest listed pantry.
- * It is not a ranking of where a pantry would succeed.
+ * Rank of a census tract as a candidate pantry site. Estimated from net new
+ * reach, poverty on that new ground, and households without a vehicle.
+ * It is not a probability that a pantry would succeed.
  */
-export const PressureScoreSchema = z.object({
+export const PlacementWeightsSchema = z.object({
+  netNewReach: z.number(),
+  povertyOnNewGround: z.number(),
+  noVehicleOnNewGround: z.number(),
+});
+export type PlacementWeights = z.infer<typeof PlacementWeightsSchema>;
+
+export const PlacementScoreSchema = z.object({
   geoid: z.string(),
-  population: z.number().nullable(),
-  povertyRate: z.number().nullable(),
-  nearestListedMeters: z.number().nullable(),
-  gap: z.number().nullable(),
-  pressureRaw: z.number().nullable(),
-  pressureIndex: z.number().nullable(),
+  coveredShare: z.number().nullable(),
+  netNewPeople: z.number().nullable(),
+  povertyOnNewGround: z.number().nullable(),
+  noVehicleOnNewGround: z.number().nullable(),
+  placementIndex: z.number().nullable(),
   status: ValueStatusSchema,
   note: z.string(),
 });
-export type PressureScore = z.infer<typeof PressureScoreSchema>;
+export type PlacementScore = z.infer<typeof PlacementScoreSchema>;
+
+export const PlacementIndexRequestSchema = z.object({
+  catchmentRadiusMeters: z.coerce.number().min(200).max(5000),
+});
+export type PlacementIndexRequest = z.infer<typeof PlacementIndexRequestSchema>;
+
+export const PlacementIndexResultSchema = z.object({
+  catchmentRadiusMeters: z.number(),
+  modelVersion: z.string(),
+  weights: PlacementWeightsSchema,
+  tracts: z.array(PlacementScoreSchema),
+  limitations: z.array(z.string()),
+});
+export type PlacementIndexResult = z.infer<typeof PlacementIndexResultSchema>;
