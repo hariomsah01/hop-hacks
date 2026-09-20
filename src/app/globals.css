@@ -108,3 +108,10 @@ input[type="range"] {
   scrollbar-width: thin;
   scrollbar-color: #2a3340 transparent;
 }
+
+/* About drawer on the Analytics tab stays on the dark terminal palette. */
+.analytics-shell #side-drawer {
+  border-left-color: #1c2430;
+  background: #0d1117;
+  box-shadow: -12px 0 32px rgb(0 0 0 / 0.45);
+}

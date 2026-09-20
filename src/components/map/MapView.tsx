@@ -740,11 +740,11 @@ export default function MapView({
   }, []);
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full overflow-hidden">
       <div ref={containerRef} className="h-full w-full" aria-label="Map of Baltimore City" />
 
       {/* Layer controls */}
-      <div className="absolute left-3 top-3 z-10 w-56 rounded-lg border border-[var(--color-hairline)] bg-white/95 p-2.5 shadow-sm backdrop-blur">
+      <div className="absolute left-3 top-3 z-10 max-h-[calc(100%-0.75rem)] w-56 overflow-y-auto rounded-lg border border-[var(--color-hairline)] bg-white/95 p-2.5 shadow-sm backdrop-blur">
         <div className="mb-1.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-navy-500)]">
             <Layers size={12} aria-hidden /> Layers

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Pause, Play, RotateCcw } from "lucide-react";
 import type { AnalyticsPeriod, AnalyticsResult, AnalyticsSeries } from "@/lib/contracts";
 import type { SitePoint } from "@/components/map/MapView";
 import AnalyticsChart, { type AnalyticsLine } from "./AnalyticsChart";
@@ -9,7 +8,7 @@ import AnalyticsChart, { type AnalyticsLine } from "./AnalyticsChart";
 const FOOD_LINES: AnalyticsLine[] = [
   { dataKey: "foodDistributed", name: "Distributed", color: "#3ee0d8" },
   { dataKey: "foodReceived", name: "Received", color: "#f5d76e" },
-  { dataKey: "foodWasted", name: "Discarded", color: "#ff7a45" },
+  { dataKey: "foodWasted", name: "Discarded", color: "#ff7a45", yAxisId: "right" },
 ];
 
 const PEOPLE_LINES: AnalyticsLine[] = [
@@ -18,16 +17,35 @@ const PEOPLE_LINES: AnalyticsLine[] = [
   { dataKey: "staff", name: "Staff", color: "#ff7a45", yAxisId: "right" },
 ];
 
-const UNEMPLOYMENT_LINES: AnalyticsLine[] = [
-  { dataKey: "unemploymentRate", name: "Unemployment", color: "#ffb000" },
+const ACCESS_LINES: AnalyticsLine[] = [
+  { dataKey: "foodAccessGapLb", name: "Access gap", color: "#ffb000" },
 ];
 
 function formatCount(value: number) {
   return Math.round(value).toLocaleString("en-US");
 }
 
-function formatPercent(value: number) {
-  return `${value.toFixed(1)}%`;
+/** Axis ticks for food pounds. Tooltip still uses formatCount. */
+function formatCompactPounds(value: number) {
+  if (!Number.isFinite(value) || value === 0) return "0";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    const millions = value / 1_000_000;
+    const text =
+      Math.abs(millions) >= 10
+        ? String(Math.round(millions))
+        : millions.toFixed(1).replace(/\.0$/, "");
+    return `${text}M`;
+  }
+  if (abs >= 1_000) {
+    const thousands = value / 1_000;
+    const text =
+      Math.abs(thousands) >= 100
+        ? String(Math.round(thousands))
+        : thousands.toFixed(Math.abs(thousands) >= 10 ? 0 : 1).replace(/\.0$/, "");
+    return `${text}k`;
+  }
+  return String(Math.round(value));
 }
 
 function Stat({
@@ -35,15 +53,12 @@ function Stat({
   value,
   previous,
   invert,
-  unit,
 }: {
   label: string;
   value: number;
   previous: number | null;
   invert?: boolean;
-  unit?: "pct";
 }) {
-  const display = unit === "pct" ? formatPercent(value) : formatCount(value);
   const delta = previous == null ? null : value - previous;
   const up = delta != null && delta > 0;
   const good = delta == null ? null : invert ? !up : up;
@@ -54,7 +69,7 @@ function Stat({
       </div>
       <div className="flex items-baseline gap-1.5">
         <span className="text-[13px] font-semibold tabular-nums text-[var(--at-text)]">
-          {display}
+          {formatCount(value)}
         </span>
         {delta != null && delta !== 0 && (
           <span
@@ -63,9 +78,7 @@ function Stat({
             }`}
           >
             {up ? "▲" : "▼"}
-            {unit === "pct"
-              ? `${Math.abs(delta).toFixed(1)}`
-              : formatCount(Math.abs(delta))}
+            {formatCount(Math.abs(delta))}
           </span>
         )}
       </div>
@@ -83,6 +96,9 @@ function ChartCard({
   onCursorIndex,
   yTickFormatter,
   rightYTickFormatter,
+  tooltipFormatter,
+  yDomain,
+  rightYDomain,
 }: {
   title: string;
   data: AnalyticsPeriod[];
@@ -93,6 +109,9 @@ function ChartCard({
   onCursorIndex: (index: number) => void;
   yTickFormatter?: (value: number) => string;
   rightYTickFormatter?: (value: number) => string;
+  tooltipFormatter?: (value: number) => string;
+  yDomain?: [number, number];
+  rightYDomain?: [number, number];
 }) {
   return (
     <section className="shrink-0 overflow-hidden border border-[var(--at-line)] bg-[var(--at-panel)] px-3 py-2">
@@ -114,6 +133,9 @@ function ChartCard({
             onCursorIndex={onCursorIndex}
             yTickFormatter={yTickFormatter}
             rightYTickFormatter={rightYTickFormatter}
+            tooltipFormatter={tooltipFormatter}
+            yDomain={yDomain}
+            rightYDomain={rightYDomain}
           />
         )}
       </div>
@@ -121,73 +143,67 @@ function ChartCard({
   );
 }
 
+function maxMetric(
+  series: Array<AnalyticsSeries | null | undefined>,
+  keys: Array<keyof AnalyticsPeriod>,
+) {
+  let max = 0;
+  for (const item of series) {
+    for (const period of item?.periods ?? []) {
+      for (const key of keys) {
+        const value = period[key];
+        if (typeof value === "number" && Number.isFinite(value) && value > max) {
+          max = value;
+        }
+      }
+    }
+  }
+  return max;
+}
+
+function axisDomain(max: number): [number, number] | undefined {
+  if (max <= 0) return undefined;
+  return [0, Math.ceil(max * 1.08)];
+}
+
+const CHART_SYNC_ID = "ptwn-analytics";
+
 function Column({
   code,
   title,
   subtitle,
   series,
+  domains,
+  cursorIndex,
+  onCursorIndex,
 }: {
   code: string;
   title: string;
   subtitle: string;
   series: AnalyticsSeries | null;
+  domains: {
+    foodLeft?: [number, number];
+    foodRight?: [number, number];
+    peopleLeft?: [number, number];
+    peopleRight?: [number, number];
+    access?: [number, number];
+  };
+  cursorIndex: number;
+  onCursorIndex: (index: number) => void;
 }) {
   const periods = series?.periods ?? [];
   const firstForecastIndex = series?.firstForecastIndex ?? 0;
-  const [cursorIndex, setCursorIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-
-  useEffect(() => {
-    setCursorIndex(Math.min(firstForecastIndex, Math.max(periods.length - 1, 0)));
-    setPlaying(false);
-  }, [firstForecastIndex, periods.length]);
-
-  useEffect(() => {
-    if (!playing || periods.length === 0) return;
-    const timer = window.setInterval(() => {
-      setCursorIndex((current) => {
-        if (current >= periods.length - 1) {
-          setPlaying(false);
-          return current;
-        }
-        return current + 1;
-      });
-    }, 750);
-    return () => window.clearInterval(timer);
-  }, [playing, periods.length]);
-
   const cursor = periods[cursorIndex] ?? null;
   const previous = periods[cursorIndex - 1] ?? null;
-  const cursorLabel = cursor?.label ?? null;
-
-  const onCursorIndex = (index: number) => {
-    if (index >= 0 && index < periods.length) {
-      setPlaying(false);
-      setCursorIndex(index);
-    }
-  };
 
   return (
     <div className="flex min-w-0 flex-col gap-2 p-3">
       <header className="shrink-0 border-b border-[var(--at-line)] pb-2">
-        <div className="flex items-baseline justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--at-amber)]">
-              {code}  {title}
-            </div>
-            <p className="truncate text-[10px] text-[var(--at-muted)]">{subtitle}</p>
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--at-amber)]">
+            {code}  {title}
           </div>
-          <div
-            className="shrink-0 text-right"
-            aria-live="polite"
-          >
-            <div className="text-[11px] font-semibold tracking-[0.12em] text-[var(--at-yellow)]">
-              {cursorLabel ?? "—"}
-            </div>
-            <div className="text-[9px] uppercase tracking-[0.16em] text-[var(--at-muted)]">
-              {cursor?.kind === "forecast" ? "Forecast" : "History"}
-            </div>
-          </div>
+          <p className="truncate text-[10px] text-[var(--at-muted)]">{subtitle}</p>
         </div>
 
         {cursor && (
@@ -209,11 +225,10 @@ function Column({
               invert
             />
             <Stat
-              label="Unemp"
-              value={cursor.unemploymentRate}
-              previous={previous?.unemploymentRate ?? null}
+              label="Access gap"
+              value={cursor.foodAccessGapLb}
+              previous={previous?.foodAccessGapLb ?? null}
               invert
-              unit="pct"
             />
             <Stat
               label="Clients"
@@ -240,9 +255,13 @@ function Column({
         lines={FOOD_LINES}
         firstForecastIndex={firstForecastIndex}
         cursorIndex={cursorIndex}
-        syncId={`ptwn-${code}`}
+        syncId={CHART_SYNC_ID}
         onCursorIndex={onCursorIndex}
-        yTickFormatter={formatCount}
+        yTickFormatter={formatCompactPounds}
+        rightYTickFormatter={formatCount}
+        tooltipFormatter={formatCount}
+        yDomain={domains.foodLeft}
+        rightYDomain={domains.foodRight}
       />
       <ChartCard
         title="People"
@@ -250,65 +269,32 @@ function Column({
         lines={PEOPLE_LINES}
         firstForecastIndex={firstForecastIndex}
         cursorIndex={cursorIndex}
-        syncId={`ptwn-${code}`}
+        syncId={CHART_SYNC_ID}
         onCursorIndex={onCursorIndex}
         yTickFormatter={formatCount}
         rightYTickFormatter={formatCount}
+        yDomain={domains.peopleLeft}
+        rightYDomain={domains.peopleRight}
       />
       <ChartCard
-        title="Unemployment"
+        title="Access gap"
         data={periods}
-        lines={UNEMPLOYMENT_LINES}
+        lines={ACCESS_LINES}
         firstForecastIndex={firstForecastIndex}
         cursorIndex={cursorIndex}
-        syncId={`ptwn-${code}`}
+        syncId={CHART_SYNC_ID}
         onCursorIndex={onCursorIndex}
-        yTickFormatter={formatPercent}
+        yTickFormatter={formatCount}
+        yDomain={domains.access}
       />
 
-      <div className="flex items-center gap-2 border-t border-[var(--at-line)] pt-2">
-        <button
-          type="button"
-          onClick={() => {
-            if (cursorIndex >= periods.length - 1) {
-              setCursorIndex(firstForecastIndex);
-            }
-            setPlaying((value) => !value);
-          }}
-          className="flex items-center gap-1 rounded-sm bg-[var(--at-amber)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-black hover:bg-[var(--at-yellow)]"
-        >
-          {playing ? <Pause size={11} aria-hidden /> : <Play size={11} aria-hidden />}
-          {playing ? "Pause" : "Play fcast"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setPlaying(false);
-            setCursorIndex(firstForecastIndex);
-          }}
-          className="flex items-center gap-1 rounded-sm border border-[var(--at-line)] px-2 py-1 text-[10px] uppercase tracking-wide text-[var(--at-muted)] hover:border-[var(--at-amber)] hover:text-[var(--at-amber)]"
-        >
-          <RotateCcw size={11} aria-hidden />
-          Reset
-        </button>
-        <span className="w-16 text-[10px] font-semibold tabular-nums text-[var(--at-yellow)]">
-          {cursorLabel ?? "—"}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={Math.max(periods.length - 1, 0)}
-          value={cursorIndex}
-          onChange={(event) => {
-            setPlaying(false);
-            setCursorIndex(Number(event.target.value));
-          }}
-          className="w-full"
-          aria-label={`${title} month`}
-        />
-      </div>
       <p className="text-[9px] uppercase tracking-[0.12em] text-[var(--at-muted)]">
-        Solid history · dashed forecast · hover any chart to lock the date
+        Solid history · dashed forecast · hover any chart to align all six
+      </p>
+      <p className="text-[9px] uppercase tracking-[0.12em] text-[var(--at-muted)]">
+        Access gap is this ring&apos;s share of citywide food still sitting
+        on people after current listings split the load. A new pantry adds a
+        listing, so the gap falls.
       </p>
     </div>
   );
@@ -361,6 +347,30 @@ export default function AnalyticsView({
     return new Date(result.generatedAt).toISOString().replace("T", " ").slice(0, 19);
   }, [result]);
 
+  const domains = useMemo(() => {
+    const series = [result?.baseline, result?.withNewLocation];
+    return {
+      foodLeft: axisDomain(maxMetric(series, ["foodDistributed", "foodReceived"])),
+      foodRight: axisDomain(maxMetric(series, ["foodWasted"])),
+      peopleLeft: axisDomain(maxMetric(series, ["clients", "households"])),
+      peopleRight: axisDomain(maxMetric(series, ["staff"])),
+      access: axisDomain(maxMetric(series, ["foodAccessGapLb"])),
+    };
+  }, [result]);
+
+  const periodCount = result?.baseline.periods.length ?? 0;
+  const firstForecastIndex = result?.baseline.firstForecastIndex ?? 0;
+  const [cursorIndex, setCursorIndex] = useState(0);
+
+  useEffect(() => {
+    setCursorIndex(Math.min(firstForecastIndex, Math.max(periodCount - 1, 0)));
+  }, [firstForecastIndex, periodCount, result?.generatedAt]);
+
+  const onCursorIndex = (index: number) => {
+    if (index < 0 || index >= periodCount) return;
+    setCursorIndex((current) => (current === index ? current : index));
+  };
+
   return (
     <div className="analytics-terminal flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--at-line)] bg-[var(--at-bg)] px-3 py-1.5">
@@ -388,14 +398,20 @@ export default function AnalyticsView({
           <Column
             code="01"
             title="Baseline"
-            subtitle="Simulation without a new location"
+            subtitle="This ring without a new pantry"
             series={result?.baseline ?? null}
+            domains={domains}
+            cursorIndex={cursorIndex}
+            onCursorIndex={onCursorIndex}
           />
           <Column
             code="02"
             title="Expansion"
-            subtitle="Simulation with the Map tab pin"
+            subtitle="This ring after the Map tab pin opens"
             series={result?.withNewLocation ?? null}
+            domains={domains}
+            cursorIndex={cursorIndex}
+            onCursorIndex={onCursorIndex}
           />
         </div>
       </div>

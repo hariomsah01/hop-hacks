@@ -21,7 +21,7 @@ const METRIC_KEYS = [
   "clients",
   "households",
   "staff",
-  "unemploymentRate",
+  "foodAccessGapLb",
 ] as const;
 
 export type AnalyticsLine = {
@@ -51,12 +51,12 @@ function TerminalTooltip({
   active,
   label,
   payload,
-  yTickFormatter,
+  valueFormatter,
 }: {
   active?: boolean;
   label?: string | number;
   payload?: Array<{ name?: string; value?: number | null; color?: string }>;
-  yTickFormatter?: (value: number) => string;
+  valueFormatter?: (value: number) => string;
 }) {
   if (!active || !payload?.length) return null;
   const rows = payload.filter(
@@ -72,8 +72,8 @@ function TerminalTooltip({
           <span style={{ color: item.color }}>{item.name}</span>
           <span className="tabular-nums">
             {typeof item.value === "number"
-              ? yTickFormatter
-                ? yTickFormatter(item.value)
+              ? valueFormatter
+                ? valueFormatter(item.value)
                 : item.value.toLocaleString("en-US")
               : "—"}
           </span>
@@ -92,6 +92,9 @@ export default function AnalyticsChart({
   onCursorIndex,
   yTickFormatter,
   rightYTickFormatter,
+  tooltipFormatter,
+  yDomain,
+  rightYDomain,
 }: {
   data: AnalyticsPeriod[];
   lines: AnalyticsLine[];
@@ -101,6 +104,9 @@ export default function AnalyticsChart({
   onCursorIndex: (index: number) => void;
   yTickFormatter?: (value: number) => string;
   rightYTickFormatter?: (value: number) => string;
+  tooltipFormatter?: (value: number) => string;
+  yDomain?: [number, number];
+  rightYDomain?: [number, number];
 }) {
   const hasRightAxis = lines.some((line) => line.yAxisId === "right");
   const rows = splitHistoryAndForecast(data, firstForecastIndex);
@@ -150,22 +156,28 @@ export default function AnalyticsChart({
           tickFormatter={yTickFormatter}
           axisLine={false}
           tickLine={false}
+          domain={yDomain}
         />
         {hasRightAxis && (
           <YAxis
             yAxisId="right"
             orientation="right"
-            width={34}
-            tick={tick}
+            width={42}
+            tick={{ ...tick, fill: "#ff7a45" }}
             tickFormatter={rightYTickFormatter}
             axisLine={false}
             tickLine={false}
+            domain={rightYDomain}
           />
         )}
         <Tooltip
           defaultIndex={cursorIndex}
           cursor={{ stroke: "#f5d76e", strokeWidth: 1.5 }}
-          content={<TerminalTooltip yTickFormatter={yTickFormatter} />}
+          content={
+            <TerminalTooltip
+              valueFormatter={tooltipFormatter ?? yTickFormatter}
+            />
+          }
         />
         <Legend
           wrapperStyle={{ fontSize: 10, color: "#7d8b9a" }}
@@ -183,6 +195,13 @@ export default function AnalyticsChart({
               fontSize: 9,
               position: "insideTopLeft",
             }}
+          />
+        )}
+        {data[cursorIndex] && (
+          <ReferenceLine
+            x={data[cursorIndex].label}
+            stroke="#f5d76e"
+            strokeWidth={1.5}
           />
         )}
         {lines.map((line) => (

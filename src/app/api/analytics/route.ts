@@ -6,8 +6,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * Baseline vs selected-location scenario for the Analytics tab.
- * Historical organization records are joined with Baltimore unemployment and
- * forecast with ridge regression in the server-side analytics module.
+ * Organization history is forecast with ridge regression, then attributed to
+ * the Map-tab catchment. Expansion adds one site's throughput at that pin,
+ * scaled by crowding, poverty, and people with no nearby listing.
  */
 export async function POST(request: Request) {
   let body: unknown;

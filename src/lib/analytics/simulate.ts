@@ -3,7 +3,8 @@ import path from "node:path";
 
 import type { AnalyticsPeriod, AnalyticsRequest, AnalyticsResult } from "@/lib/contracts";
 import { loadDatasets } from "@/lib/data/datasets";
-import { runNetworkComparison } from "@/lib/network/comparison";
+import { analyzeLocation } from "@/lib/geo/analyze";
+import { computeReach } from "@/lib/geo/reach";
 
 const FOOD_FILE = path.join(
   process.cwd(),
@@ -185,6 +186,118 @@ function predict(model: Model, row: number[]): number {
   return result;
 }
 
+function cityPopulationTotal(): number {
+  const { tracts } = loadDatasets();
+  return tracts.reduce((sum, tract) => sum + (tract.population ?? 0), 0);
+}
+
+function cityPovertyRate(): number | null {
+  const { tracts } = loadDatasets();
+  let numerator = 0;
+  let denominator = 0;
+  for (const tract of tracts) {
+    if (tract.povertyCount == null || tract.povertyUniverse == null) continue;
+    numerator += tract.povertyCount;
+    denominator += tract.povertyUniverse;
+  }
+  if (denominator <= 0) return null;
+  return numerator / denominator;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * How strongly this pin should move the ring. Crowded, higher-poverty, and
+ * uncovered rings take up more of a new site's throughput.
+ *
+ * listedNearby is pantries whose published point sits inside the Map-tab
+ * ring, not listings whose assumed rings could merely touch it.
+ */
+function locationUptake(access: LocationAccess): number {
+  const peoplePerListing =
+    access.listedCitywide > 0
+      ? access.cityPopulation / access.listedCitywide
+      : 0;
+  const crowding =
+    peoplePerListing > 0
+      ? access.catchmentPopulation / Math.max(access.listedNearby, 1) / peoplePerListing
+      : 1;
+  const povertyRatio =
+    access.cityPoverty != null &&
+    access.catchmentPoverty != null &&
+    access.cityPoverty > 0
+      ? access.catchmentPoverty / access.cityPoverty
+      : 1;
+  const uncoveredRatio =
+    access.catchmentPopulation > 0
+      ? access.uncoveredPopulation / access.catchmentPopulation
+      : 0;
+  return clamp(
+    0.45 * crowding + 0.35 * povertyRatio + 0.4 + 0.9 * uncoveredRatio,
+    0.8,
+    3.25,
+  );
+}
+
+/** Forecast month 0 is already visible; month 11 is the full site effect. */
+function expansionRamp(forecastOffset: number, horizon = 12): number {
+  if (horizon <= 1) return 1;
+  return 0.4 + 0.6 * (forecastOffset / (horizon - 1));
+}
+
+type LocationAccess = {
+  cityPopulation: number;
+  listedCitywide: number;
+  catchmentPopulation: number;
+  listedNearby: number;
+  uncoveredPopulation: number;
+  cityPoverty: number | null;
+  catchmentPoverty: number | null;
+};
+
+/**
+ * Pounds of this month's citywide food sitting on people in the ring who
+ * still share existing listings. Zero listings → the whole ring is the gap.
+ * Each added listing (including a ramped new site) splits that load further.
+ *
+ * Citywide people-per-pantry capacity was the wrong bar: a 1.2 km ring with
+ * several listings looks "fully covered" on that test and the series went to 0.
+ */
+function foodAccessGapLb(args: {
+  statewideFoodDistributed: number;
+  cityPopulation: number;
+  catchmentPopulation: number;
+  listedNearby: number;
+  extraListings: number;
+  uncoveredPopulation: number;
+}): number {
+  const {
+    statewideFoodDistributed,
+    cityPopulation,
+    catchmentPopulation,
+    listedNearby,
+    extraListings,
+    uncoveredPopulation,
+  } = args;
+  if (
+    statewideFoodDistributed <= 0 ||
+    cityPopulation <= 0 ||
+    catchmentPopulation <= 0
+  ) {
+    return 0;
+  }
+  const poundsPerPerson = statewideFoodDistributed / cityPopulation;
+  const serving = Math.max(0, listedNearby) + Math.max(0, extraListings);
+  const residualPeople = catchmentPopulation / (serving + 1);
+  const uncoveredPeople = Math.max(
+    0,
+    uncoveredPopulation * Math.max(0, 1 - extraListings),
+  );
+  return Math.round(Math.max(residualPeople, uncoveredPeople) * poundsPerPerson);
+}
+
 function unemploymentForecast(rows: UnemploymentRow[], throughMonth: string): Map<string, number> {
   const out = new Map(rows.map((row) => [row.month, row.rate]));
   const origin = rows[0].month;
@@ -271,53 +384,148 @@ function forecastBaseline(food: FoodRow[], unemployment: UnemploymentRow[]) {
   return { forecastRows, uMap, firstForecastMonth: addMonths(lastObserved, 1) };
 }
 
-function baselinePeriods(food: FoodRow[], forecast: FoodRow[], uMap: Map<string, number>): AnalyticsPeriod[] {
+function attributedScale(access: LocationAccess): number {
+  if (access.cityPopulation <= 0 || access.catchmentPopulation <= 0) return 0;
+  return access.catchmentPopulation / access.cityPopulation;
+}
+
+/**
+ * Incremental ring activity from opening this pin. A naive 1/(n+1) split of
+ * current ring throughput, stretched by local uptake. Floor/ceiling keep the
+ * forecast visibly different from baseline without letting an empty ring 3×.
+ */
+function siteScale(access: LocationAccess): number {
+  const ring = attributedScale(access);
+  if (ring <= 0) return 0;
+  const naiveShare = 1 / (access.listedNearby + 1);
+  const relative = clamp(naiveShare * locationUptake(access), 0.16, 1.85);
+  return ring * relative;
+}
+
+function wasteCut(access: LocationAccess): number {
+  const span = 3.25 - 0.8;
+  const t = span > 0 ? (locationUptake(access) - 0.8) / span : 0;
+  return clamp(0.1 + 0.22 * t, 0.08, 0.35);
+}
+
+function scaleActivity(
+  row: Pick<
+    FoodRow,
+    "foodDistributed" | "foodReceived" | "foodWasted" | "clients" | "households" | "staff"
+  >,
+  activity: number,
+  waste: number,
+  staff: number,
+) {
+  return {
+    foodDistributed: Math.round(row.foodDistributed * activity),
+    foodReceived: Math.round(row.foodReceived * activity),
+    foodWasted: Math.round(row.foodWasted * waste),
+    clients: Math.round(row.clients * activity),
+    households: Math.round(row.households * activity),
+    staff: Math.round(row.staff * staff),
+  };
+}
+
+function baselinePeriods(
+  food: FoodRow[],
+  forecast: FoodRow[],
+  access: LocationAccess,
+): AnalyticsPeriod[] {
   const historyWindow = food.slice(-12);
-  return [...historyWindow, ...forecast].map((row, index) => ({
-    label: labelMonth(row.month),
-    kind: index < historyWindow.length ? "observed" : "forecast",
-    foodDistributed: row.foodDistributed,
-    foodReceived: row.foodReceived,
-    foodWasted: row.foodWasted,
-    clients: row.clients,
-    households: row.households,
-    staff: row.staff,
-    unemploymentRate: uMap.get(row.month) ?? 0,
-  }));
+  const activity = attributedScale(access);
+  return [...historyWindow, ...forecast].map((row, index) => {
+    const scaled = scaleActivity(row, activity, activity, activity);
+    return {
+      label: labelMonth(row.month),
+      kind: index < historyWindow.length ? "observed" : "forecast",
+      ...scaled,
+      foodAccessGapLb: foodAccessGapLb({
+        statewideFoodDistributed: row.foodDistributed,
+        cityPopulation: access.cityPopulation,
+        catchmentPopulation: access.catchmentPopulation,
+        listedNearby: access.listedNearby,
+        extraListings: 0,
+        uncoveredPopulation: access.uncoveredPopulation,
+      }),
+    };
+  });
 }
 
 function expansionPeriods(
-  baseline: AnalyticsPeriod[],
-  request: AnalyticsRequest,
+  food: FoodRow[],
+  forecast: FoodRow[],
+  access: LocationAccess,
 ): AnalyticsPeriod[] {
-  const comparison = runNetworkComparison(request);
-  const newlyCovered = comparison.change.newlyCoveredPopulation.value ?? 0;
-  const data = loadDatasets();
-  const cityPopulation = data.tracts.reduce((sum, tract) => sum + (tract.population ?? 0), 0);
-  const share = cityPopulation > 0 ? Math.min(0.2, newlyCovered / cityPopulation) : 0;
-
-  return baseline.map((period) => {
-    if (period.kind === "observed") return period;
-    const activityFactor = 1 + share;
-    const staffFactor = 1 + share * 0.45;
+  const historyWindow = food.slice(-12);
+  const activity = attributedScale(access);
+  const added = siteScale(access);
+  const history = historyWindow.map((row) => {
+    const scaled = scaleActivity(row, activity, activity, activity);
     return {
-      ...period,
-      foodDistributed: Math.round(period.foodDistributed * activityFactor),
-      foodReceived: Math.round(period.foodReceived * activityFactor),
-      // More throughput does not automatically imply more waste; keep the trained forecast.
-      foodWasted: period.foodWasted,
-      clients: Math.round(period.clients * activityFactor),
-      households: Math.round(period.households * activityFactor),
-      staff: Math.round(period.staff * staffFactor),
+      label: labelMonth(row.month),
+      kind: "observed" as const,
+      ...scaled,
+      foodAccessGapLb: foodAccessGapLb({
+        statewideFoodDistributed: row.foodDistributed,
+        cityPopulation: access.cityPopulation,
+        catchmentPopulation: access.catchmentPopulation,
+        listedNearby: access.listedNearby,
+        extraListings: 0,
+        uncoveredPopulation: access.uncoveredPopulation,
+      }),
     };
   });
+
+  const future = forecast.map((row, offset) => {
+    const ramp = expansionRamp(offset, forecast.length);
+    const activityScale = activity + added * ramp;
+    // Extra throughput with a lower waste rate: more matching, not more discard.
+    const wasteScale = activity * (1 - wasteCut(access) * ramp);
+    const staffScale = activity + added * ramp * 0.5;
+    const scaled = scaleActivity(row, activityScale, wasteScale, staffScale);
+    return {
+      label: labelMonth(row.month),
+      kind: "forecast" as const,
+      ...scaled,
+      foodAccessGapLb: foodAccessGapLb({
+        statewideFoodDistributed: row.foodDistributed,
+        cityPopulation: access.cityPopulation,
+        catchmentPopulation: access.catchmentPopulation,
+        listedNearby: access.listedNearby,
+        extraListings: ramp,
+        uncoveredPopulation: access.uncoveredPopulation,
+      }),
+    };
+  });
+
+  return [...history, ...future];
+}
+
+function readLocationAccess(request: AnalyticsRequest): LocationAccess {
+  const data = loadDatasets();
+  const geo = analyzeLocation({
+    location: { label: "proposed", ...request.proposed },
+    catchmentRadiusMeters: request.catchmentRadiusMeters,
+  });
+  const reach = computeReach(geo, null);
+  return {
+    cityPopulation: cityPopulationTotal(),
+    listedCitywide: Math.max(1, data.services.length),
+    catchmentPopulation: geo.estimatedCatchmentPopulation.value ?? 0,
+    listedNearby: geo.listedServiceCount.value ?? 0,
+    uncoveredPopulation: reach.populationOutsideAllListings.value ?? 0,
+    cityPoverty: cityPovertyRate(),
+    catchmentPoverty: geo.povertyRate.value,
+  };
 }
 
 export function buildAnalyticsSimulation(request: AnalyticsRequest): AnalyticsResult {
   const food = readFoodRows();
   const unemployment = readBaltimoreUnemployment();
-  const { forecastRows, uMap } = forecastBaseline(food, unemployment);
-  const baseline = baselinePeriods(food, forecastRows, uMap);
+  const { forecastRows } = forecastBaseline(food, unemployment);
+  const access = readLocationAccess(request);
+  const baseline = baselinePeriods(food, forecastRows, access);
   const firstForecastIndex = 12;
 
   return {
@@ -328,7 +536,7 @@ export function buildAnalyticsSimulation(request: AnalyticsRequest): AnalyticsRe
     baseline: { firstForecastIndex, periods: baseline },
     withNewLocation: {
       firstForecastIndex,
-      periods: expansionPeriods(baseline, request),
+      periods: expansionPeriods(food, forecastRows, access),
     },
   };
 }

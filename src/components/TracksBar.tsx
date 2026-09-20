@@ -30,14 +30,19 @@ export const TARGETED_PRIZES = [
     detail: "Conversation to a downloadable action plan",
   },
   {
-    id: "digitalocean",
+    id: "godaddy",
     kind: "prize" as const,
-    label: "DigitalOcean",
-    detail: "Host the running app",
+    label: "GoDaddy",
+    detail: "Domain for the running app",
   },
 ] as const;
 
-export default function TracksBar() {
+export default function TracksBar({
+  tone = "light",
+}: {
+  tone?: "light" | "dark";
+}) {
+  const dark = tone === "dark";
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       <span className="sr-only">HopHacks targets</span>
@@ -47,8 +52,12 @@ export default function TracksBar() {
           title={prize.detail}
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide ${
             prize.kind === "track"
-              ? "bg-[var(--color-navy-800)] text-white"
-              : "border border-[var(--color-hairline)] bg-[var(--color-teal-50)] text-[var(--color-teal-700)]"
+              ? dark
+                ? "bg-[#ffb000] text-black"
+                : "bg-[var(--color-navy-800)] text-white"
+              : dark
+                ? "border border-[#2a3340] bg-[#11161d] text-[#c5d0dc]"
+                : "border border-[var(--color-hairline)] bg-[var(--color-teal-50)] text-[var(--color-teal-700)]"
           }`}
         >
           {prize.kind === "track" ? "Track · " : ""}
