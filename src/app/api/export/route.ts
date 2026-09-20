@@ -3,12 +3,13 @@ import { z } from "zod";
 import { SiteAssessmentRequestSchema } from "@/lib/contracts";
 import { runAssessment } from "@/lib/analysis/assess";
 import { buildActionPlanMarkdown } from "@/lib/export/actionPlan";
+import { buildActionPlanPdf } from "@/lib/export/pdf";
 
 export const dynamic = "force-dynamic";
 
 const BodySchema = z.object({
   request: SiteAssessmentRequestSchema,
-  format: z.enum(["markdown", "json"]).default("markdown"),
+  format: z.enum(["markdown", "json", "pdf"]).default("markdown"),
 });
 
 /**
@@ -39,6 +40,16 @@ export async function POST(request: Request) {
       headers: {
         "content-type": "application/json",
         "content-disposition": `attachment; filename="pantrytwin-assessment-${stamp}.json"`,
+      },
+    });
+  }
+
+  if (parsed.data.format === "pdf") {
+    const pdf = buildActionPlanPdf(buildActionPlanMarkdown(assessment));
+    return new NextResponse(Buffer.from(pdf), {
+      headers: {
+        "content-type": "application/pdf",
+        "content-disposition": `attachment; filename="pantrytwin-action-plan-${stamp}.pdf"`,
       },
     });
   }

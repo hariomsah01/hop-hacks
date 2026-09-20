@@ -98,8 +98,7 @@ function scenarioSection(result: ScenarioResult): string {
 export function buildActionPlanMarkdown(
   assessment: SiteAssessmentResult,
 ): string {
-  const { plan, proposed, reference, reach, scenarios, consequences } =
-    assessment;
+  const { plan, proposed, reach, scenarios, consequences } = assessment;
 
   const planRows = [
     `| Catchment radius | ${plan.catchmentRadiusMeters} m |`,
@@ -119,25 +118,8 @@ export function buildActionPlanMarkdown(
     `| Weekly participation (low/medium/high) | ${(plan.weeklyParticipationRate.low * 100).toFixed(1)}% / ${(plan.weeklyParticipationRate.medium * 100).toFixed(1)}% / ${(plan.weeklyParticipationRate.high * 100).toFixed(1)}% |`,
   ].join("\n");
 
-  const referenceBlock = reference
-    ? [
-        `**${reference.pantry.name}**`,
-        "",
-        `- Address: ${reference.pantry.address ?? "not published"}`,
-        `- Programme type: ${reference.pantry.program ?? "not published"}`,
-        `- Phone: ${reference.pantry.phone ?? "not published"}`,
-        `- Services listed: ${reference.pantry.services ?? "not published"}`,
-        `- Publisher notes: ${reference.pantry.publishedNotes ?? "none published"} (not verified, and usually eligibility conditions rather than opening hours)`,
-        `- Straight-line distance from the proposed site: ${reference.pantry.distanceMeters.toLocaleString()} m`,
-        `- Source listings: ${reference.pantry.sourceIds.join(", ")}`,
-        "",
-        "What the public data does **not** say about this pantry:",
-        "",
-        ...reference.unknowns.map((u) => `- ${u}`),
-        "",
-        "Because of the above, this pantry's operations are not simulated anywhere in this report. Only its location is used.",
-      ].join("\n")
-    : "_No reference pantry was selected, so duplication of existing coverage could not be measured._";
+  const listedRosterNote =
+    "Listed services are a published roster used to measure whether this ring covers new ground. They are not a selected comparison site, and a listing is not proof a site is open.";
 
   const newTracts = reach.newlyCoveredTracts
     .slice(0, 15)
@@ -175,35 +157,35 @@ export function buildActionPlanMarkdown(
 Generated ${assessment.generatedAt}
 Models: geography ${assessment.modelVersions.geo}, simulation ${assessment.modelVersions.simulation}
 
-> This report compares a **proposed** pantry, whose operating variables you set,
-> against a **real** pantry taken from a public listing. It reports modelled
-> outcomes given stated assumptions. It does not estimate a probability that a
-> pantry will succeed, and it makes no claim about whether the existing pantry
-> is meeting need today.
+> This report analyses a **proposed** pantry at the pin you placed. It reports
+> modelled geography and an assumed 28-day plan. It does not estimate a
+> probability that a pantry will succeed, and it does not compare this pin to
+> a chosen existing pantry.
 
 ## 1. What this report concluded
 
 ${consequenceSection(consequences)}
 
-## 2. The existing pantry it was compared against
+## 2. Listed services on the map
 
-${referenceBlock}
+${listedRosterNote}
+
+${reach.nearbyListedServiceCount.value === null
+  ? "Listed services near this point: Unavailable."
+  : `${reach.nearbyListedServiceCount.value} listed services sit near enough that their assumed ring could touch this one.`}
 
 ## 3. Reach: who this site would add
 
 | Measure | Value |
 | --- | --- |
 | People in the proposed catchment | ${fmtMeasure(reach.proposedPopulation)} |
-| People in the existing pantry's catchment | ${fmtMeasure(reach.referencePopulation)} |
-| **Net new reach** (proposed only) | ${fmtMeasure(reach.netNewPopulation)} |
-| Duplicated reach (both catchments) | ${fmtMeasure(reach.duplicatedPopulation)} |
+| **Net new reach** (outside every listed ring) | ${fmtMeasure(reach.netNewPopulation)} |
+| Already inside a listed ring | ${fmtMeasure(reach.duplicatedPopulation)} |
 | Net new as a share of the proposed catchment | ${fmtMeasure(reach.netNewShare)} |
 | People outside **every** listed service's ring | ${fmtMeasure(reach.populationOutsideAllListings)} |
 | Listed services near enough to overlap | ${fmtMeasure(reach.nearbyListedServiceCount)} |
 
 ${reach.overlap.note}
-
-Overlap area: ${reach.overlap.overlapAreaSqMeters.toLocaleString()} m² — ${(reach.overlap.shareOfProposed * 100).toFixed(0)}% of the proposed catchment, ${(reach.overlap.shareOfReference * 100).toFixed(0)}% of the existing one, across ${reach.overlap.sharedTractGeoids.length} shared tract(s).
 
 ${
   newTracts
@@ -221,12 +203,10 @@ ${planRows}
 
 ${geographySection(proposed, "Proposed site")}
 
-${reference ? geographySection(reference.geography, `Existing pantry: ${reference.pantry.name}`) : ""}
-
 ## 5. Modelled operations over 28 days (proposed site only)
 
-The existing pantry is absent from this section on purpose: its staffing, food
-supply, storage and budget are not published, so modelling it would mean
+Listed sites are absent from this section on purpose: their staffing, food
+supply, storage and budget are not published, so modelling them would mean
 inventing them.
 
 ${scenarios.map((s) => scenarioSection(s.proposed)).join("\n\n")}

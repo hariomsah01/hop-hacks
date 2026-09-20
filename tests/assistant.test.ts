@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_OPERATING_PLAN } from "@/lib/contracts";
 import { runAssessment } from "@/lib/analysis/assess";
-import { dispatchAssistantTool } from "@/lib/ai/gemini";
+import {
+  collectQuestionEvidence,
+  dispatchAssistantTool,
+} from "@/lib/ai/gemini";
 import { loadDatasets } from "@/lib/data/datasets";
 
 const request = {
@@ -23,15 +26,15 @@ describe("dispatchAssistantTool", () => {
     expect(out.estimatedCatchmentPopulation.value).toBeGreaterThan(0);
   });
 
-  it("describes the real pantry and states it is not simulated", () => {
+  it("does not treat a listed pantry as a comparison site", () => {
     const out = dispatchAssistantTool(
       "get_reference_pantry",
       {},
       assessment,
-    ) as { selected: boolean; isSimulated: boolean; name: string };
-    expect(out.selected).toBe(true);
-    expect(out.isSimulated).toBe(false);
-    expect(out.name).toBe(assessment.reference?.pantry.name);
+    ) as { selected: boolean; note: string };
+    expect(out.selected).toBe(false);
+    expect(out.note).toMatch(/does not compare/i);
+    expect(assessment.reference).toBeNull();
   });
 
   it("rejects reference geography when no pantry is selected", () => {
@@ -64,6 +67,45 @@ describe("dispatchAssistantTool", () => {
     ) as { site: string; appliesTo: string };
     expect(out.site).toBe("proposed");
     expect(out.appliesTo).toMatch(/proposed pantry only/i);
+  });
+
+  it("packages this pin's evidence without picking an address", () => {
+    const out = dispatchAssistantTool("get_siting_brief", {}, assessment) as {
+      howToUse: string;
+      peopleInThisRing: { value: number | null; status: string };
+      coverage: {
+        peopleOutsideEveryListedRing: { status: string };
+      };
+      cannotDecide: string[];
+    };
+    expect(out.howToUse).toMatch(/does not pick a street/i);
+    expect(out.peopleInThisRing.status).toBe("estimated");
+    expect(out.peopleInThisRing.value).not.toBeNull();
+    expect(["sourced", "estimated", "assumed", "unavailable"]).toContain(
+      out.coverage.peopleOutsideEveryListedRing.status,
+    );
+    expect(out.cannotDecide.some((item) => /street address/i.test(item))).toBe(
+      true,
+    );
+  });
+
+  it("preloads evidence for a coverage question without inventing people", () => {
+    const { evidence, toolCalls } = collectQuestionEvidence(
+      "Would opening here add coverage, or duplicate what is already there?",
+      assessment,
+    );
+    expect(toolCalls.map((c) => c.name)).toEqual([
+      "get_siting_brief",
+      "get_reach_comparison",
+    ]);
+    const reach = evidence.find(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "function" in item &&
+        item.function === "get_reach_comparison",
+    ) as { output: { proposedCatchmentPopulation: { status: string } } };
+    expect(reach.output.proposedCatchmentPopulation.status).toBe("estimated");
   });
 
   it("rejects unknown tools instead of guessing", () => {

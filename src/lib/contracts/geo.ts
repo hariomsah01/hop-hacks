@@ -3,6 +3,7 @@ import {
   DataCompletenessSchema,
   MeasureSchema,
   SourceRecordSchema,
+  ValueStatusSchema,
 } from "./common";
 import { LocationSchema } from "./planning";
 
@@ -96,3 +97,21 @@ export const CatchmentOverlapSchema = z.object({
   note: z.string(),
 });
 export type CatchmentOverlap = z.infer<typeof CatchmentOverlapSchema>;
+
+/**
+ * Tract-level coverage pressure. Estimated from published people, ACS
+ * poverty, and straight-line distance to the nearest listed pantry.
+ * It is not a ranking of where a pantry would succeed.
+ */
+export const PressureScoreSchema = z.object({
+  geoid: z.string(),
+  population: z.number().nullable(),
+  povertyRate: z.number().nullable(),
+  nearestListedMeters: z.number().nullable(),
+  gap: z.number().nullable(),
+  pressureRaw: z.number().nullable(),
+  pressureIndex: z.number().nullable(),
+  status: ValueStatusSchema,
+  note: z.string(),
+});
+export type PressureScore = z.infer<typeof PressureScoreSchema>;

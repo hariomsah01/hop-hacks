@@ -6,6 +6,7 @@ import { z } from "zod";
  */
 export const GEO_MODEL_VERSION = "pantrytwin-geo-0.1.0";
 export const SIM_MODEL_VERSION = "pantrytwin-sim-0.1.0";
+export const PRESSURE_MODEL_VERSION = "pantrytwin-pressure-0.1.0";
 
 /**
  * Provenance class of a single number shown in the UI.

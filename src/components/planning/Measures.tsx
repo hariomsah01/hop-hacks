@@ -4,11 +4,27 @@ import type { Measure } from "@/lib/contracts";
 import { STATUS_META, formatMeasure } from "@/lib/format";
 
 /** Small provenance chip. Every number on screen carries one. */
-export function StatusBadge({ measure }: { measure: Measure }) {
+export function StatusBadge({
+  measure,
+  compact = false,
+}: {
+  measure: Measure;
+  compact?: boolean;
+}) {
   const meta = STATUS_META[measure.status];
+  const title = `${meta.label}. ${meta.description}${measure.sourceIds.length ? ` Sources: ${measure.sourceIds.join(", ")}.` : ""}${measure.note ? ` ${measure.note}` : ""}`;
+  if (compact) {
+    return (
+      <span
+        title={title}
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`}
+        aria-label={meta.label}
+      />
+    );
+  }
   return (
     <span
-      title={`${meta.label}. ${meta.description}${measure.sourceIds.length ? ` Sources: ${measure.sourceIds.join(", ")}.` : ""}${measure.note ? ` ${measure.note}` : ""}`}
+      title={title}
       className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${meta.bg} ${meta.text}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} aria-hidden />
@@ -48,11 +64,25 @@ export function MetricRow({
   label,
   measure,
   hint,
+  compact = false,
 }: {
   label: string;
   measure: Measure;
   hint?: string | null;
+  compact?: boolean;
 }) {
+  if (compact) {
+    return (
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-hairline)] py-2 last:border-b-0">
+        <span className="text-xs text-[var(--color-navy-600)]">{label}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <MeasureValue measure={measure} />
+          <StatusBadge measure={measure} compact />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="border-b border-[var(--color-hairline)] py-2 last:border-b-0">
       <div className="flex items-baseline justify-between gap-2">

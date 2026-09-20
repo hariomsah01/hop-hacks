@@ -83,12 +83,19 @@ describe("computeReach", () => {
     );
   });
 
-  it("leaves duplication unavailable rather than zero with no reference", () => {
+  it("measures new and duplicated reach against the listed roster when no comparison pantry is used", () => {
     const reach = computeReach(at(DOWNTOWN), null);
-    expect(reach.duplicatedPopulation.status).toBe("unavailable");
-    expect(reach.duplicatedPopulation.value).toBeNull();
+    const netNew = reach.netNewPopulation.value as number;
+    const duplicated = reach.duplicatedPopulation.value as number;
+    const outside = reach.populationOutsideAllListings.value as number;
+    const total = reach.proposedPopulation.value as number;
+
+    expect(reach.duplicatedPopulation.status).toBe("estimated");
     expect(reach.referencePopulation.status).toBe("unavailable");
-    expect(reach.overlap.overlapAreaSqMeters).toBe(0);
+    expect(netNew).toBeCloseTo(outside, 0);
+    expect(netNew + duplicated).toBeCloseTo(total, 0);
+    expect(reach.overlap.note).toMatch(/listed service/i);
+    expect(reach.overlap.note).not.toMatch(/no reference pantry/i);
   });
 
   it("is deterministic", () => {
@@ -117,19 +124,20 @@ describe("runAssessment", () => {
     expect(JSON.stringify(result.scenarios)).not.toMatch(/"reference"/);
   });
 
-  it("carries the real pantry's identity and an explicit list of unknowns", () => {
+  it("does not attach a comparison pantry", () => {
     const result = runAssessment(request);
-    expect(result.reference).not.toBeNull();
-    expect(result.reference?.pantry.id).toBe(referenceId);
-    expect(result.reference?.pantry.distanceMeters).toBeGreaterThan(0);
-    expect(result.reference?.unknowns.length).toBeGreaterThan(0);
-    expect(result.reference?.unknowns.join(" ")).toMatch(/capacity|staffing/i);
+    expect(result.reference).toBeNull();
+    expect(result.consequences.some((c) => c.id === "no-reference")).toBe(
+      false,
+    );
+    expect(
+      result.consequences.some((c) => c.id === "reference-capacity-unknown"),
+    ).toBe(false);
   });
 
-  it("always flags that the existing pantry's capacity is unknown", () => {
+  it("always flags that attendance is assumed", () => {
     const result = runAssessment(request);
     const gaps = result.consequences.filter((c) => c.severity === "gap");
-    expect(gaps.some((c) => c.id === "reference-capacity-unknown")).toBe(true);
     expect(gaps.some((c) => c.id === "demand-assumed")).toBe(true);
   });
 
@@ -148,11 +156,12 @@ describe("runAssessment", () => {
     }
   });
 
-  it("degrades to reach-only when no pantry has been selected", () => {
+  it("still models the proposal when no pantry id is supplied", () => {
     const result = runAssessment({ ...request, referenceServiceId: null });
     expect(result.reference).toBeNull();
-    expect(result.consequences.some((c) => c.id === "no-reference")).toBe(true);
-    // The proposal is still fully modelled without a comparison point.
+    expect(result.consequences.some((c) => c.id === "no-reference")).toBe(
+      false,
+    );
     expect(result.scenarios).toHaveLength(3);
   });
 
