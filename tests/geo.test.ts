@@ -24,6 +24,20 @@ describe("cached datasets", () => {
     const data = loadDatasets();
     expect(data.tracts.every((t) => typeof t.geoid === "string")).toBe(true);
   });
+
+  it("points Baltimore landings at ArcGIS item pages, not Hub catalog searches", () => {
+    const data = loadDatasets();
+    const baltimore = data.sources.filter((source) =>
+      source.publisher.includes("Baltimore City"),
+    );
+    expect(baltimore.length).toBeGreaterThanOrEqual(4);
+    for (const source of baltimore) {
+      expect(source.landingUrl).toMatch(
+        /^https:\/\/www\.arcgis\.com\/home\/item\.html\?id=[a-f0-9]+$/i,
+      );
+      expect(source.landingUrl).not.toContain("search?q=");
+    }
+  });
 });
 
 describe("analyzeLocation", () => {

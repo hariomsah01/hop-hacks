@@ -13,11 +13,13 @@
  */
 import {
   describeLayer,
+  describeService,
   fetchAllFeatures,
   fetchJson,
   layerUrl,
   nowIso,
   pickField,
+  publisherItemUrl,
   roundCoords,
   sha256,
   writeJson,
@@ -54,6 +56,8 @@ function loadLocalEnv() {
       ) {
         value = value.slice(1, -1);
       }
+      value = value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+      if (key === "CENSUS_API_KEY") value = value.replace(/\s+/g, "");
       if (process.env[key] == null || process.env[key] === "") {
         process.env[key] = value;
       }
@@ -62,8 +66,9 @@ function loadLocalEnv() {
 }
 
 loadLocalEnv();
+const censusKeyLength = process.env.CENSUS_API_KEY?.length ?? 0;
 console.log(
-  `ingest env: CENSUS_API_KEY ${process.env.CENSUS_API_KEY ? "present" : "missing"}`,
+  `ingest env: CENSUS_API_KEY ${censusKeyLength ? `present (${censusKeyLength} chars)` : "missing"}`,
 );
 
 const OUT = "data/processed";
@@ -93,8 +98,8 @@ function recordCheck(name, passed, detail) {
 const ARCGIS_TERMS =
   "Baltimore City open data published via ArcGIS Online. Confirm reuse terms on the dataset landing page before redistribution.";
 
-const landing = (service) =>
-  `https://data.baltimorecity.gov/search?q=${encodeURIComponent(service)}`;
+const landing = (service, serviceItemId = null) =>
+  publisherItemUrl(serviceItemId) ?? `${layerUrl(service)}`;
 
 const num = (value) => {
   if (value === null || value === undefined || value === "") return null;
@@ -147,6 +152,7 @@ async function ingestLayer({
 }) {
   try {
     const described = await describeLayer(service, layer);
+    const serviceMeta = await describeService(service);
     const chosen = {};
     for (const [key, patterns] of Object.entries(fieldPlan ?? {})) {
       chosen[key] = pickField(described.fields, patterns);
@@ -161,7 +167,7 @@ async function ingestLayer({
       id,
       publisher: "Baltimore City (Open Baltimore / ArcGIS Online)",
       title,
-      landingUrl: landing(service),
+      landingUrl: landing(service, serviceMeta.serviceItemId),
       downloadUrl: `${layerUrl(service, layer)}/query?where=1=1&outFields=*&f=geojson`,
       retrievedAt: nowIso(),
       dataVintage,
@@ -421,7 +427,17 @@ async function main() {
         message: `${acs.length} tracts enriched from ACS 5-year estimates`,
       });
     } catch (err) {
-      recordBlocked("acs", `ACS request failed: ${err.message}`, "https://api.census.gov");
+      const raw = err instanceof Error ? err.message : String(err);
+      const message = /Invalid Key/i.test(raw)
+        ? "Census rejected CENSUS_API_KEY (Invalid Key). Poverty rate and no-vehicle household share stay unavailable."
+        : /Missing Key/i.test(raw)
+          ? "Census reported a missing API key. Poverty rate and no-vehicle household share stay unavailable."
+          : `ACS request failed: ${raw}`;
+      recordBlocked(
+        "acs",
+        message,
+        "https://api.census.gov/data/key_signup.html",
+      );
     }
   }
 

@@ -170,6 +170,12 @@ check("sources: manifest has entries", Array.isArray(sourceCatalog.sources) &&
 check("sources: every ingested dataset has a publisher landing URL",
   sourceCatalog.sources.every((s) => typeof s.landingUrl === "string" &&
     /^https?:\/\//.test(s.landingUrl)));
+check("sources: Baltimore landings are ArcGIS item pages, not catalog searches",
+  sourceCatalog.sources
+    .filter((s) => String(s.publisher ?? "").includes("Baltimore City"))
+    .every((s) =>
+      /arcgis\.com\/home\/item\.html\?id=[a-f0-9]+/i.test(s.landingUrl) &&
+      !s.landingUrl.includes("search?q=")));
 check("sources: blocked entries still name a publisher page",
   !Array.isArray(sourceCatalog.validation?.blocked) ||
   sourceCatalog.validation.blocked.every((b) =>

@@ -93,16 +93,20 @@ Census enrichment. The app runs fully without either.
 
 ## Data sources
 
-Fetched by `scripts/ingest/run.mjs` from Baltimore City's ArcGIS open-data
-portal, with the schema of each layer inspected rather than assumed. The fields
-actually used are recorded in `data/processed/validation-report.json`.
+Fetched by `scripts/ingest/run.mjs` from Baltimore City's ArcGIS Feature
+Services. Each ingest reads `serviceItemId` from the live FeatureServer JSON
+and points `landingUrl` at the ArcGIS item page. Open Baltimore catalog search
+on the ArcGIS service name (`Food_Access`, `Census_Tract_2020`, and so on)
+returns nothing: those hosted layers are public but unlisted in the Hub
+catalog. The fields actually used are recorded in
+`data/processed/validation-report.json`.
 
 | ID | Dataset | Used for | Publisher page |
 | --- | --- | --- | --- |
-| `tracts` | Census tracts, 2020 geography, with the publisher's joined ACS profile | Catchment population | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Census_Tract_2020) |
-| `pantries` | Food pantry partner locations | Existing service listings | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Food_Pantry_Partners) |
-| `food-access` | Food access resource points | Existing service listings | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Food_Access) |
-| `city-boundary` | Baltimore City boundary | Inside/outside checks | [Open Baltimore search](https://data.baltimorecity.gov/search?q=Baltimore_City_Boundary) |
+| `tracts` | Census tracts, 2020 geography, with the publisher's joined ACS profile | Catchment population | [Census Tract 2020](https://www.arcgis.com/home/item.html?id=c1acd7207bb4462397efde84af56e406) |
+| `pantries` | Food pantry partner locations | Existing service listings | [Food Pantry Partners](https://www.arcgis.com/home/item.html?id=c27d4039608f4feabb2a80212a1fc5a9) |
+| `food-access` | Food access resource points | Existing service listings | [Food Access](https://www.arcgis.com/home/item.html?id=19efb9cd98754090b31b56238f7ab7b3) |
+| `city-boundary` | Baltimore City boundary | Inside/outside checks | [Baltimore City Boundary](https://www.arcgis.com/home/item.html?id=8fb27b819705448e9020acb69e7ce2c9) |
 | `acs` | Census ACS 5-year estimates | Poverty and vehicle access (requires `CENSUS_API_KEY`) | [Census ACS 5-year](https://www.census.gov/data/developers/data-sets/acs-5year.html) |
 
 Ingestion writes a checksum, retrieval timestamp, data vintage and terms for

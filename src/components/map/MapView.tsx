@@ -512,11 +512,33 @@ export default function MapView({
       <div ref={containerRef} className="h-full w-full" aria-label="Map of Baltimore City" />
 
       {/* Layer controls */}
-      <div className="absolute left-3 top-3 z-10 rounded-lg border border-[var(--color-hairline)] bg-white/95 p-3 shadow-sm backdrop-blur">
-        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-navy-500)]">
-          <Layers size={13} aria-hidden /> Layers
+      <div className="absolute left-3 top-3 z-10 w-52 rounded-lg border border-[var(--color-hairline)] bg-white/95 p-2.5 shadow-sm backdrop-blur">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-navy-500)]">
+            <Layers size={12} aria-hidden /> Layers
+          </div>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={recentre}
+              title="Fit Baltimore City"
+              className="rounded p-1 text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)] hover:text-[var(--color-navy-800)]"
+            >
+              <LocateFixed size={13} aria-hidden />
+              <span className="sr-only">Fit city</span>
+            </button>
+            <button
+              type="button"
+              onClick={onReset}
+              title="Reset proposed site"
+              className="rounded p-1 text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)] hover:text-[var(--color-navy-800)]"
+            >
+              <RotateCcw size={13} aria-hidden />
+              <span className="sr-only">Reset proposed site</span>
+            </button>
+          </div>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
+        <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
           <input
             type="checkbox"
             checked={showTracts}
@@ -525,65 +547,30 @@ export default function MapView({
           />
           Population density
         </label>
-        <label className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
+        <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
           <input
             type="checkbox"
             checked={showServices}
             onChange={(e) => setShowServices(e.target.checked)}
             className="accent-[var(--color-teal-600)]"
           />
-          Existing pantries
+          Listed pantries
         </label>
-
-        <div className="mt-3 border-t border-[var(--color-hairline)] pt-2">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-navy-500)]">
-            Legend
-          </div>
-          <div className="flex items-center gap-2 py-0.5 text-xs">
-            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: PROPOSED_COLOUR }} />
-            Your proposed site
-          </div>
-          <div className="flex items-center gap-2 py-0.5 text-xs">
-            <span className="inline-block h-3 w-3 rounded-full" style={{ background: REFERENCE_COLOUR }} />
-            Pantry you are comparing to
-          </div>
-          <div className="flex items-center gap-2 py-0.5 text-xs">
-            <span className="inline-block h-3 w-3 rounded-full bg-[#0f2540]" />
-            Other listed pantry
-          </div>
-          <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[var(--color-navy-400)]">
-            <span className="inline-block h-2.5 w-6 rounded-sm bg-gradient-to-r from-[#f0f9f8] to-[#0b6b6b]" />
-            Low to high density
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-navy-400)]">
-            <span className="inline-block h-2.5 w-3 rounded-sm bg-[#e5e7eb]" />
-            No population reported
-          </div>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-[var(--color-hairline)] pt-2 text-[11px] text-[var(--color-navy-500)]">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: PROPOSED_COLOUR }} />
+            Proposed
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: REFERENCE_COLOUR }} />
+            Compare
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#0f2540]" />
+            Listed
+          </span>
         </div>
       </div>
-
-      {/* Map actions */}
-      <div className="absolute right-3 top-20 z-10 flex flex-col gap-1.5">
-        <button
-          type="button"
-          onClick={recentre}
-          className="flex items-center gap-1.5 rounded-lg border border-[var(--color-hairline)] bg-white/95 px-2.5 py-1.5 text-xs font-medium shadow-sm hover:bg-[var(--color-teal-50)]"
-        >
-          <LocateFixed size={13} aria-hidden /> Fit city
-        </button>
-        <button
-          type="button"
-          onClick={onReset}
-          className="flex items-center gap-1.5 rounded-lg border border-[var(--color-hairline)] bg-white/95 px-2.5 py-1.5 text-xs font-medium shadow-sm hover:bg-[var(--color-teal-50)]"
-        >
-          <RotateCcw size={13} aria-hidden /> Reset
-        </button>
-      </div>
-
-      <p className="absolute bottom-2 left-3 z-10 max-w-md rounded bg-white/90 px-2 py-1 text-[11px] text-[var(--color-navy-500)]">
-        Drag the orange pin to place your pantry. Click any navy dot to compare
-        it against that real pantry.
-      </p>
 
       {!ready && !error && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-canvas)]/80">
@@ -595,7 +582,7 @@ export default function MapView({
       )}
 
       {basemapMissing && !error && (
-        <div className="absolute bottom-9 left-3 z-10 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/95 px-2 py-1.5 text-[11px] text-amber-900">
+        <div className="absolute bottom-3 left-3 z-10 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/95 px-2 py-1.5 text-[11px] text-amber-900">
           <AlertTriangle size={12} className="mt-px shrink-0" aria-hidden />
           <span>
             Street basemap unreachable. Showing Baltimore data layers only; the
@@ -610,7 +597,7 @@ export default function MapView({
           <div>
             <p className="font-medium">{error}</p>
             <p className="mt-0.5 text-xs">
-              The findings panels still work; only the map display is affected.
+              The analysis still runs; only the map display is affected.
             </p>
           </div>
         </div>

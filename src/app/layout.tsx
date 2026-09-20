@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PantryTwin | Baltimore pantry location planner",
+  title: "PantryTwin — Baltimore City pantry siting",
   description:
-    "Compare two candidate Baltimore City food-pantry locations using public data, transparent operating assumptions and sourced AI explanations.",
+    "Site a proposed Baltimore City food pantry against listed services using public data and labeled operating assumptions.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
