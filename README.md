@@ -1,188 +1,429 @@
-# PantryTwin
+# 🥫 PantryTwin
 
-Help a Baltimore nonprofit decide whether opening a pantry at a chosen point
-would add coverage, compared with a real listed pantry nearby.
+### Location intelligence for smarter food-access planning.
 
-You control the proposed site and its operating plan. The other site is a
-public listing. The report is modelled outcomes under your assumptions, not a
-prediction of success.
+PantryTwin is an interactive decision-support platform that helps nonprofits explore where a new food pantry can expand community reach and how that location could perform operationally.
 
-## HopHacks prize targets
+Select a point anywhere on the Baltimore City map and PantryTwin creates a digital planning twin of that location. It combines geographic coverage, nearby food resources, Census demographics, poverty indicators, environmental intelligence, operational simulations, and AI-assisted analysis in one experience.
 
-One track only, plus branded prizes the app actually uses:
+Instead of reviewing maps, spreadsheets, demographic datasets, and operational assumptions separately, organizations can explore them together through a single location-based assessment.
 
-| Selection | Role in the product |
-| --- | --- |
-| **Bloomberg — Most Philanthropic Hack** | The only track. Nonprofits compare a proposed pantry against an existing listing. |
-| **Gemini API** | Server-side assistant that may only call approved analysis functions and explain sourced results. |
-| **Auctor — Conversation to Action** | A question plus the current assessment becomes a downloadable action plan. |
-| **DigitalOcean** | Host the running app (App Platform spec in `.do/app.yaml`). |
-
-Do not select unused sponsor prizes. ElevenLabs, Backboard and GoDaddy stay off
-the submission until those features exist.
+> **Choose a location → understand the community → model the operation → turn the analysis into action.**
 
 ---
 
-## What it does
+## 🏆 HopHacks Prize Targets
 
-- **Geographic reach.** Draws a catchment around each pin and apportions census
-  tract population by the share of each tract inside the ring.
-- **Operations.** Runs a deterministic 28-day model of intake, storage, shelf
-  life, volunteer throughput, delivery and cost, and reports which resource ran
-  out first.
-- **Three demand levels.** Participation is not measured anywhere in this
-  build, so low, medium and high assumptions are always run together.
-- **Honest gaps.** A value that is not known is shown as *unavailable* and is
-  never replaced with zero.
-- **Exportable plan.** One Markdown action plan containing the settings,
-  results, assumptions, limitations and full source manifest.
+PantryTwin focuses on one primary track while integrating sponsor technologies directly into the product.
 
-## Provenance model
-
-Every number on screen carries one of four labels, and the same labels appear
-in the export:
-
-| Label | Meaning |
+| Selection | Role in PantryTwin |
 | --- | --- |
-| **Sourced** | Taken directly from a public dataset in the manifest. |
-| **Estimated** | Calculated by our analysis functions from sourced data. |
-| **Assumed** | A planning input you chose. Not measured. |
-| **Unavailable** | Not known. Deliberately blank, never zero. |
+| **Bloomberg — Most Philanthropic Hack** | PantryTwin gives nonprofits a data-driven way to explore where food-access resources can create additional community reach and how a proposed pantry could operate under different demand levels. |
+| **Gemini API** | Powers the server-side conversational assistant that explains location evidence, coverage, scenarios, operational results, and sourced findings. |
+| **Auctor — Conversation to Action** | Converts the current assessment and user questions into an actionable, downloadable planning report. |
+| **GoDaddy** | Provides the custom domain for PantryTwin and creates a public-facing home for nonprofit organizations, community partners, and future users. |
+| **Open Environmental Intelligence** | Adds environmental context to location intelligence so community conditions can be explored alongside food access, demographics, and geographic coverage. |
 
-## Quick start
+The application is deployed through **Vercel** directly from the GitHub repository.
 
-```bash
-npm install
-npm run ingest      # fetch Baltimore City public data into data/processed
-npm run dev         # http://localhost:3000
-```
+---
 
-`npm run ingest` is optional to re-run: the cached datasets are committed so the
-app works immediately after `npm install`.
+# 💡 The Problem
 
-### The MapLibre worker step
+Food insecurity is deeply connected to geography.
 
-`scripts/copy-maplibre-worker.mjs` runs automatically on install, dev and
-build. It copies MapLibre's worker chunks into `public/maplibre/` so that
-`config.WORKER_URL` can point at a real URL.
+When an organization considers opening a new pantry, the location raises several planning questions:
 
-This is not optional. MapLibre 6 locates its own worker by reading
-`import.meta.url` and returns an empty string when that is not an `http(s)`
-URL. Bundlers rewrite `import.meta.url`, so in a Next.js build the lookup
-fails silently: no worker starts, every GeoJSON source stays unloaded, and the
-map paints a background with no tracts, services, catchments or street tiles on
-it, with nothing logged to the console.
+- How many people live within reach?
+- How much of that population already falls within the reach of another listed pantry?
+- Where could a new location add geographic coverage?
+- How many food-access resources already operate nearby?
+- What are the demographic and economic characteristics of the surrounding community?
+- What environmental conditions shape the area?
+- How many households could the pantry serve with a particular operating plan?
+- Which operational resource becomes the main constraint as demand changes?
+- How would the system change after adding a new location?
 
-If the map ever renders empty, check that `/maplibre/maplibre-gl-worker.mjs`
-returns 200 before looking anywhere else.
+PantryTwin brings these questions into one interactive model.
 
-Copy `.env.example` to `.env.local` to enable the Gemini assistant and the
-Census enrichment. The app runs fully without either.
+---
 
-## Scripts
+# 🗺️ Map Intelligence
 
-| Command | Purpose |
+The **Map** is the primary exploration workspace.
+
+Users place a proposed pantry directly on the map and immediately receive a location-specific assessment.
+
+PantryTwin combines multiple geographic layers including:
+
+- proposed pantry locations
+- listed food pantries
+- Maryland Food Bank locations
+- Census tract geography
+- population information
+- poverty indicators
+- placement scoring
+- environmental intelligence
+- selected-site catchments
+- nearby food-access services
+
+Users can enable and disable layers to explore the community from different perspectives.
+
+---
+
+## 📍 Interactive Site Selection
+
+A proposed pantry can be positioned directly on the map.
+
+The selected point becomes the center of the analysis and updates the surrounding statistics, coverage calculations, placement information, nearby resources, operational scenarios, and AI context.
+
+This makes PantryTwin useful for rapid **what-if location exploration**.
+
+Move the pin and the digital planning twin changes with it.
+
+---
+
+# 🎯 Placement Intelligence
+
+PantryTwin calculates a **placement score** for the selected location.
+
+The score combines location-level planning signals such as:
+
+- population
+- poverty
+- geographic reach
+- nearby food resources
+- vehicle-access information when available
+- overlap with listed pantry coverage
+
+The interface presents the score spatially so users can explore how conditions vary across Baltimore.
+
+Each value maintains its provenance classification so users can distinguish public data, calculated estimates, and planning assumptions.
+
+---
+
+# 📐 Adjustable Catchment Analysis
+
+Users control the assumed straight-line catchment radius around the proposed pantry.
+
+For example:
+
+**1.2 km assumed straight-line ring**
+
+The radius can be adjusted directly from the Map interface.
+
+PantryTwin intersects the selected catchment with Census tract geography and estimates the population represented inside the ring.
+
+For every intersecting tract:
+
+**Estimated population inside catchment**
+
+`tract population × percentage of tract area inside catchment`
+
+This produces an area-weighted estimate rather than assigning the entire population of every intersected tract to the proposed pantry.
+
+---
+
+# 👥 Coverage Intelligence
+
+The Statistics panel explains the geographic reach of the selected location.
+
+Metrics include:
+
+- people within the selected ring
+- people already inside a listed pantry ring
+- people outside every listed pantry ring
+- nearby listed services
+- poverty rate
+- geographic overlap
+- net-new geographic reach
+
+For the example assessment shown in PantryTwin:
+
+- **28,086 people** are represented within the selected 1.2 km catchment
+- **37 listed services** are nearby
+- the surrounding poverty rate is **28.5%**
+- the model identifies how much of the catchment overlaps existing listed pantry coverage
+
+This transforms a map pin into measurable community context.
+
+---
+
+# 🔄 Coverage vs. Duplication
+
+A central question PantryTwin answers is:
+
+> **Would opening here add geographic coverage, or duplicate an area already within reach of a listed pantry?**
+
+The system compares the proposed catchment against catchments surrounding existing pantry listings.
+
+It separates:
+
+**Net-new reach**  
+Population represented outside existing listed pantry rings.
+
+**Duplicated reach**  
+Population represented within both the proposed ring and an existing listed pantry ring.
+
+This gives organizations a clearer view of how a proposed site fits into the existing food-access landscape.
+
+---
+
+# 🥫 Nearby Food Resources
+
+Public food-resource locations appear directly on the map.
+
+PantryTwin can display:
+
+- listed pantries
+- Maryland Food Bank locations
+- food-access resources
+- selected comparison sites
+
+Users can visually explore the relationship between a proposed pantry and the surrounding food-support ecosystem.
+
+PantryTwin treats these locations as community resources and uses their published geographic presence to understand existing coverage.
+
+---
+
+# 📊 Statistics Panel
+
+Selecting a location opens a detailed statistics workspace containing three major areas:
+
+### Findings
+
+A plain-language interpretation of the selected location.
+
+Example:
+
+> Everyone in this catchment already has a listed pantry within 1.2 km.
+
+### Coverage
+
+Displays metrics such as:
+
+- net-new geographic reach
+- total people in the ring
+- people already inside a listed pantry ring
+- nearby listed services
+- poverty rate
+
+### Plan
+
+Shows the modeled operational outcome for the proposed pantry under the selected demand scenario.
+
+---
+
+# 📈 Three Demand Scenarios
+
+PantryTwin evaluates the proposed pantry under three planning assumptions:
+
+**LOW · MEDIUM · HIGH**
+
+Each scenario represents a different assumed level of household requests.
+
+Running all three gives planners a range of operating conditions to explore.
+
+The model reports metrics including:
+
+- assumed weekly household requests
+- household visits served
+- service rate
+- cost per household
+- operational limits
+- resource utilization
+
+The scenario selector makes it possible to move between demand assumptions instantly.
+
+---
+
+# ⚙️ 28-Day Operational Twin
+
+PantryTwin creates a deterministic **28-day operational simulation** for the proposed pantry.
+
+The simulation models the interaction between:
+
+- food intake
+- storage
+- inventory
+- shelf life
+- spoilage
+- household requests
+- household visits
+- volunteer throughput
+- delivery capacity
+- operating cost
+
+Each simulation begins with the operating assumptions selected for the proposed location.
+
+Every day the model processes inventory, incoming food, available capacity, household demand, and distribution.
+
+Food is distributed using a **first-expiring-first** strategy.
+
+---
+
+# 🚦 Operational Constraint Detection
+
+PantryTwin identifies the resource shaping the pantry's ability to serve additional households.
+
+Examples include:
+
+- food on hand
+- storage capacity
+- volunteer throughput
+- delivery capacity
+
+The Statistics panel communicates both the limiting resource and when it becomes active during the 28-day simulation.
+
+This helps planners understand how operational changes could affect service capacity.
+
+---
+
+# 📉 Demand Scenario Visualization
+
+The Map statistics panel includes a visualization comparing visits served under:
+
+- Low demand
+- Medium demand
+- High demand
+
+This provides an immediate view of how the same pantry plan behaves as assumed community participation changes.
+
+---
+
+# 📊 PantryTwin Analytics
+
+The **Analytics** workspace expands the application from a single-location map into a broader operational planning dashboard.
+
+It compares two modeled states:
+
+## 01 — Baseline
+
+**Simulation without the proposed new location**
+
+The baseline represents the current modeled system.
+
+## 02 — Expansion
+
+**Simulation with the location selected from the Map**
+
+The expansion model incorporates the proposed pantry into the scenario.
+
+Displaying these views side-by-side makes it possible to explore how adding a location changes modeled food distribution and service activity.
+
+---
+
+# 📦 Food Analytics
+
+PantryTwin tracks major food-flow metrics including:
+
+- pounds distributed
+- pounds received
+- pounds discarded
+- inventory movement
+
+Interactive time-series charts display:
+
+**Distributed · Received · Discarded**
+
+Users can inspect individual periods and see the corresponding values directly on the visualization.
+
+The dashboard also displays changes between modeled periods to make trends easy to interpret.
+
+---
+
+# 👨‍👩‍👧 People Analytics
+
+The Analytics workspace tracks:
+
+- clients
+- households
+- staff
+
+These metrics are visualized over time for both the baseline and expansion models.
+
+Interactive chart inspection allows users to explore how service activity and staffing evolve across the modeled timeline.
+
+---
+
+# 🔮 Baseline and Expansion Modeling
+
+The Analytics interface places the two scenarios side-by-side:
+
+| Baseline | Expansion |
 | --- | --- |
-| `npm run dev` | Development server. |
-| `npm run build` / `npm start` | Production build and serve. |
-| `npm run ingest` | Re-fetch public data and rewrite the source manifest. |
-| `npm run typecheck` | `tsc --noEmit`. |
-| `npm test` | Geographic and simulation unit tests. |
-| `npm run checks` | Typecheck, tests and production build together. |
-| `node scripts/smoke.mjs` | End-to-end checks against a running server. |
+| Current modeled system | System with the proposed Map location |
+| Food distributed | Food distributed |
+| Food received | Food received |
+| Food discarded | Food discarded |
+| Clients | Clients |
+| Households | Households |
+| Staff | Staff |
+| Food-security indicators | Food-security indicators |
 
-## Data sources
+This creates a **digital twin comparison** between the current modeled environment and a proposed expansion.
 
-Fetched by `scripts/ingest/run.mjs` from Baltimore City's ArcGIS Feature
-Services. Each ingest reads `serviceItemId` from the live FeatureServer JSON
-and points `landingUrl` at the ArcGIS item page. Open Baltimore catalog search
-on the ArcGIS service name (`Food_Access`, `Census_Tract_2020`, and so on)
-returns nothing: those hosted layers are public but unlisted in the Hub
-catalog. The fields actually used are recorded in
-`data/processed/validation-report.json`.
+---
 
-| ID | Dataset | Used for | Publisher page |
-| --- | --- | --- | --- |
-| `tracts` | Census tracts, 2020 geography, with the publisher's joined ACS profile | Catchment population | [Census Tract 2020](https://www.arcgis.com/home/item.html?id=c1acd7207bb4462397efde84af56e406) |
-| `pantries` | Food pantry partner locations | Existing service listings | [Food Pantry Partners](https://www.arcgis.com/home/item.html?id=c27d4039608f4feabb2a80212a1fc5a9) |
-| `food-access` | Food access resource points | Existing service listings | [Food Access](https://www.arcgis.com/home/item.html?id=19efb9cd98754090b31b56238f7ab7b3) |
-| `city-boundary` | Baltimore City boundary | Inside/outside checks | [Baltimore City Boundary](https://www.arcgis.com/home/item.html?id=8fb27b819705448e9020acb69e7ce2c9) |
-| `acs` | Census ACS 5-year estimates | Poverty and vehicle access (requires `CENSUS_API_KEY`) | [Census ACS 5-year](https://www.census.gov/data/developers/data-sets/acs-5year.html) |
+# 🕒 Historical and Forecast Views
 
-Ingestion writes a checksum, retrieval timestamp, data vintage and terms for
-every source, and records anything that was blocked or skipped instead of
-quietly filling the gap.
+The analytics interface supports time-oriented exploration across historical and modeled future periods.
 
-### Known data gaps
+The dashboard distinguishes periods visually and allows users to inspect individual months through interactive charts.
 
-- **Pantry capacity is published nowhere.** No dataset states how many
-  households an existing site can serve, so nearby listings are never treated
-  as competition.
-- **Operating hours are mostly missing.** Only a minority of listings publish
-  any hours text, and none of it is verified.
-- **Poverty and vehicle access need a Census key.** Without `CENSUS_API_KEY`
-  those metrics report as unavailable.
-- **The tract layer does not state its ACS release year.** The manifest records
-  this uncertainty rather than inventing a vintage.
+This creates a planning environment where organizations can explore how the modeled system evolves over time and how a proposed location changes that trajectory.
 
-## How the analysis works
+---
 
-### Catchment population
+# 🌎 Environmental Intelligence
 
-The catchment is a **straight-line radius**, not a walking or driving time
-area. Population is apportioned by the share of each tract's area inside the
-ring, which assumes people are spread evenly across a tract. A tract that
-reports no population is excluded from the estimate rather than counted as
-zero. If the ring intersects no tract at all, coverage is a genuine zero.
+PantryTwin brings **Open Environmental Intelligence** into the location assessment.
 
-When the proposed ring overlaps an existing pantry, the app reports **net new
-reach** versus **duplicated reach**. People in the shared area can already
-reach the listed site, so the two populations must not be added together.
+Environmental context becomes another layer of community intelligence alongside:
 
-### The 28-day model
+- food access
+- population
+- poverty
+- transportation access
+- existing pantry coverage
+- operational capacity
 
-Pure and deterministic, and applied only to the **proposed** pantry. Each day
-it receives weekly deliveries limited by storage, expires stock past its shelf
-life, then serves households up to the tightest of volunteer throughput,
-delivery capacity and stock on hand, drawing first-expiring-first. Tests assert
-that intake equals distribution plus spoilage plus closing stock.
+This helps organizations view food-access planning through a broader community-resilience lens.
 
-The existing pantry is not simulated. No public dataset states its staffing,
-food volume, storage or budget, so modelling it would mean inventing them.
+Environmental indicators remain visible as their own evidence layer so organizations can understand exactly how they contribute to the assessment.
 
-The model deliberately does **not** infer rent from a location, predict
-attendance, or score a site's chance of success.
+---
 
-## The AI assistant
+# 🤖 Gemini AI Assistant
 
-The Gemini assistant runs server-side and **cannot calculate anything**. It may
-only call four approved functions that read the comparison the server already
-computed:
+PantryTwin includes an AI assistant powered by the **Gemini API**.
 
-`get_location_evidence` · `compare_locations` · `get_scenario_results` ·
-`summarize_limitations`
+Users can ask natural-language questions such as:
 
-Arguments are validated with Zod, tool calls are capped, and the whole exchange
-is time-bounded. The system instruction forbids inventing figures, requires
-source IDs in citations, requires saying plainly when something is unavailable,
-and forbids stating any probability of success. Text inside dataset records is
-treated as data to report, never as instructions to follow.
+> Would opening here add coverage?
 
-If the key is missing or the call fails, the panel says so and every metric on
-screen is unaffected.
+> How many listed pantries are near this location?
 
-## Deploying to DigitalOcean App Platform
+> What does this location tell us about community need?
 
-`.do/app.yaml` describes the service. Point App Platform at the repository, set
-`GEMINI_API_KEY` as an encrypted secret, and deploy. The health check uses
-`/api/health`, which reports 503 if the cached datasets are missing so a bad
-deploy is obvious immediately rather than at demo time.
+> Compare this location with the nearby pantry.
 
-## Limitations
+> What happens under high demand?
 
-- Straight-line catchments ignore streets, water and transit.
-- Demand is an assumption, never a measurement.
-- Coverage is Baltimore City only; a pin outside the boundary understates every
-  count, and the app says so.
-- The service roster's completeness is not guaranteed by the publisher.
-- Estimates carry sampling error that this build does not display.
+> Which operational resource is limiting service?
+
+The assistant receives the current assessment and explains the results conversationally.
+
+---
+
+## 🛡️ Grounded AI Architecture
+
+Gemini works as an **interpretation layer** over PantryTwin's analysis.
+
+The server provides approved analysis functions:
+
+```text
+get_location_evidence
+compare_locations
+get_scenario_results
+summarize_limitations
