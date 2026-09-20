@@ -1,98 +1,87 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { CircleHelp } from "lucide-react";
+import { X } from "lucide-react";
 import { STATUS_META } from "@/lib/format";
 import TracksBar from "@/components/TracksBar";
 
-export default function AboutMenu({
-  tone = "light",
-}: {
-  tone?: "light" | "dark";
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointer);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointerdown", onPointer);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
+export default function AboutPanel({ onClose }: { onClose: () => void }) {
   return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        className={
-          tone === "dark"
-            ? "flex items-center gap-1 rounded-sm border border-[#2a3340] px-2 py-1.5 text-[11px] font-medium text-[#c5d0dc] hover:border-[#ffb000] hover:text-[#ffb000]"
-            : "flex items-center gap-1 rounded-md border border-[var(--color-hairline)] px-2 py-1.5 text-[11px] font-medium text-[var(--color-navy-600)] hover:bg-[var(--color-teal-50)]"
-        }
-      >
-        <CircleHelp size={12} aria-hidden />
-        About
-      </button>
-      {open && (
-        <div
-          role="dialog"
-          aria-label="About PantryTwin"
-          className="absolute right-0 z-40 mt-1 w-80 rounded-md border border-[var(--color-hairline)] bg-white p-3 shadow-lg"
-        >
-          <p className="text-xs leading-snug text-[var(--color-navy-600)]">
-            Compare a proposed Baltimore City pantry against a listed site using
-            public data. Every number is labeled sourced, estimated, assumed, or
-            unavailable.
-          </p>
-          <div className="mt-3 space-y-1.5">
-            {(Object.keys(STATUS_META) as Array<keyof typeof STATUS_META>).map(
-              (status) => {
-                const meta = STATUS_META[status];
-                return (
-                  <div key={status} className="flex gap-2">
-                    <span
-                      className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`}
-                      aria-hidden
-                    />
-                    <p className="text-[11px] leading-snug text-[var(--color-navy-500)]">
-                      <span className={`font-semibold ${meta.text}`}>
-                        {meta.label}.
-                      </span>{" "}
-                      {meta.description}
-                    </p>
-                  </div>
-                );
-              },
-            )}
-          </div>
-          <div className="mt-3 border-t border-[var(--color-hairline)] pt-2">
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-navy-400)]">
-              Built for
-            </p>
-            <TracksBar />
-          </div>
-          <a
-            href="/api/health"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-block text-[11px] text-[var(--color-teal-700)] underline"
+    <div className="flex h-full flex-col bg-[var(--color-panel)]">
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-hairline)] px-4 py-3">
+        <div>
+          <h2
+            id="about-drawer-title"
+            className="text-sm font-semibold text-[var(--color-navy-800)]"
           >
-            System status
-          </a>
+            About
+          </h2>
+          <p className="mt-0.5 text-[11px] text-[var(--color-navy-400)]">
+            PantryTwin for Baltimore City
+          </p>
         </div>
-      )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md p-1 text-[var(--color-navy-400)] hover:bg-[var(--color-canvas)] hover:text-[var(--color-navy-800)]"
+        >
+          <X size={16} aria-hidden />
+          <span className="sr-only">Close about</span>
+        </button>
+      </header>
+
+      <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        <p className="text-xs leading-relaxed text-[var(--color-navy-600)]">
+          Place a pin to explore where a food pantry could serve people. PantryTwin
+          reads public Baltimore City data for that point and labels every figure
+          as sourced, estimated, assumed, or unavailable so the evidence stays
+          clear.
+        </p>
+
+        <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-navy-400)]">
+          Labels
+        </h3>
+        <div className="mt-1 space-y-2">
+          {(Object.keys(STATUS_META) as Array<keyof typeof STATUS_META>).map(
+            (status) => {
+              const meta = STATUS_META[status];
+              return (
+                <div key={status} className="flex gap-2">
+                  <span
+                    className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`}
+                    aria-hidden
+                  />
+                  <p className="text-[11px] leading-snug text-[var(--color-navy-500)]">
+                    <span className={`font-semibold ${meta.text}`}>
+                      {meta.label}.
+                    </span>{" "}
+                    {status === "assumed"
+                      ? "A planning input you set for this pin."
+                      : status === "unavailable"
+                        ? "Shown when a public source leaves this field blank."
+                        : meta.description}
+                  </p>
+                </div>
+              );
+            },
+          )}
+        </div>
+
+        <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-navy-400)]">
+          Built for
+        </h3>
+        <div className="mt-1.5">
+          <TracksBar />
+        </div>
+
+        <a
+          href="/api/health"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-block text-[11px] text-[var(--color-teal-700)] underline"
+        >
+          System status
+        </a>
+      </div>
     </div>
   );
 }

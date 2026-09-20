@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadDatasets } from "@/lib/data/datasets";
+import { annotateTractPressureInputs } from "@/lib/geo/pressureAnnotate";
 
 /**
  * Map layers as GeoJSON, ready for MapLibre sources. Cached because the
@@ -18,6 +19,7 @@ export async function GET() {
         tract.landAreaSqMeters > 0
           ? (tract.population / tract.landAreaSqMeters) * 1e6
           : null;
+      const pressure = annotateTractPressureInputs(tract, data.services);
       return {
         type: "Feature" as const,
         geometry: tract.geometry,
@@ -26,6 +28,11 @@ export async function GET() {
           name: tract.name,
           population: tract.population,
           densityPerSqKm: density === null ? null : Math.round(density),
+          povertyRate: pressure.povertyRate,
+          nearestListedMeters:
+            pressure.nearestListedMeters === null
+              ? null
+              : Math.round(pressure.nearestListedMeters),
         },
       };
     }),
@@ -63,6 +70,6 @@ export async function GET() {
       boundary,
       availability: data.availability,
     },
-    { headers: { "cache-control": "public, max-age=3600" } },
+    { headers: { "cache-control": "public, max-age=300" } },
   );
 }

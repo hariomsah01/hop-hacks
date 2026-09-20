@@ -1,4 +1,3 @@
-import { distance as turfDistance, point as turfPoint } from "@turf/turf";
 import {
   GEO_MODEL_VERSION,
   SIM_MODEL_VERSION,
@@ -18,19 +17,6 @@ import { computeReach } from "@/lib/geo/reach";
 import { simulatePlan } from "@/lib/simulation/engine";
 
 const SCENARIOS: ScenarioName[] = ["low", "medium", "high"];
-
-/**
- * What the public data cannot tell us about any real pantry. Listed explicitly
- * so the report never implies the existing site is saturated, underused, open,
- * or closed.
- */
-const REFERENCE_UNKNOWNS = [
-  "How much food it distributes, and to how many households",
-  "Its staffing, volunteer hours and storage capacity",
-  "Its current opening hours and whether it is still operating",
-  "Its eligibility rules, catchment, and whether it turns anyone away",
-  "Its budget and cost per household",
-];
 
 function people(value: number | null): string {
   if (value === null) return "an unknown number of";
@@ -105,15 +91,6 @@ function buildConsequences(
         detail: `${people(duplicated)} people sit inside both rings and can already reach ${name}. The remaining ${percent(share)} of the catchment is ground ${name} does not cover.`,
       });
     }
-  } else {
-    out.push({
-      id: "no-reference",
-      category: "unknown",
-      severity: "gap",
-      headline: "No existing pantry selected for comparison",
-      detail:
-        "Click one of the listed pantries on the map to compare this proposal against a real site. Until then, reach is reported in absolute terms only and duplication is unknown.",
-    });
   }
 
   const outsideAll = measure(reach.populationOutsideAllListings);
@@ -128,11 +105,9 @@ function buildConsequences(
       headline: covered
         ? `Everyone in this catchment already has a listed pantry within ${radiusKm} km`
         : `${people(outsideAll)} people here have no listed pantry within ${radiusKm} km`,
-      detail: `Measured against all ${nearbyCount} listed services near this point, each given the same ${radiusKm} km ring. ${
-        covered
-          ? "Opening here would not extend coverage to anyone who currently lacks a listed option, though it could still relieve sites that are over capacity, which this data cannot show."
-          : "These people have no listed option within that distance, which is the strongest coverage-gap signal available."
-      } The published roster may be incomplete, and a listing is not proof a site is open.`,
+      detail: covered
+        ? `Measured against ${nearbyCount} listed services given the same ${radiusKm} km ring. Opening here would not extend coverage. Capacity at those listings is unpublished.`
+        : `${people(outsideAll)} people have no listed option within that ${radiusKm} km ring. That is geography, not a count of who would attend.`,
     });
   }
 
@@ -292,48 +267,10 @@ export function runAssessment(
     catchmentRadiusMeters: plan.catchmentRadiusMeters,
   });
 
-  // ------------------------------------------------------- reference pantry
-  const record = request.referenceServiceId
-    ? data.services.find((s) => s.id === request.referenceServiceId)
-    : undefined;
-
-  let reference: SiteAssessmentResult["reference"] = null;
-  if (record) {
-    const referenceGeography = analyzeLocation({
-      location: { label: "reference", lng: record.lng, lat: record.lat },
-      catchmentRadiusMeters: plan.catchmentRadiusMeters,
-    });
-
-    const distanceMeters = Math.round(
-      turfDistance(
-        turfPoint([request.proposed.lng, request.proposed.lat]),
-        turfPoint([record.lng, record.lat]),
-        { units: "kilometers" },
-      ) * 1000,
-    );
-
-    reference = {
-      pantry: {
-        id: record.id,
-        name: record.name,
-        address: record.address,
-        program: record.program,
-        services: record.services,
-        phone: record.phone,
-        // The publisher's free-text column. It usually carries eligibility
-        // conditions rather than opening hours, so it is not called "hours".
-        publishedNotes: record.publishedHours,
-        lng: record.lng,
-        lat: record.lat,
-        sourceIds: record.sourceIds,
-        distanceMeters,
-      },
-      geography: referenceGeography,
-      unknowns: REFERENCE_UNKNOWNS,
-    };
-  }
-
-  const reach = computeReach(proposed, reference?.geography ?? null);
+  // This product analyses the proposed pin only. Listed services stay on the
+  // map as a published roster. They are not a selected comparison site.
+  const reference = null;
+  const reach = computeReach(proposed, null);
 
   // Only the proposed pantry is simulated. Modelling the reference site would
   // require inventing its staffing, food supply and budget.
@@ -353,7 +290,7 @@ export function runAssessment(
     ...new Set([
       ...proposed.limitations,
       reach.overlap.note,
-      "Only the proposed pantry is simulated. No public dataset states an existing pantry's staffing, food volume, storage or budget, so its operations are not modelled and must not be inferred from this report.",
+      "Only the proposed pantry is simulated. Listed sites are locations on the published roster; their staffing, food volume, storage and budget are unpublished and are not modelled.",
       "Every listed service is given the same catchment radius as the proposed site. Real service areas are not published and will differ.",
       "Demand is an assumption swept across three participation rates. Nothing in this build measures how many households would actually arrive.",
       "This tool reports modelled outcomes under stated assumptions. It does not estimate a probability that a pantry will succeed.",

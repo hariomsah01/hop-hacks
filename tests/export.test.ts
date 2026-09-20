@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_OPERATING_PLAN } from "@/lib/contracts";
 import { runAssessment } from "@/lib/analysis/assess";
 import { buildActionPlanMarkdown } from "@/lib/export/actionPlan";
+import { buildActionPlanPdf } from "@/lib/export/pdf";
 import { loadDatasets } from "@/lib/data/datasets";
 
 describe("action plan export", () => {
@@ -13,9 +14,10 @@ describe("action plan export", () => {
 
   const markdown = buildActionPlanMarkdown(assessment);
 
-  it("names the real pantry and says it is not simulated", () => {
-    expect(markdown).toContain(assessment.reference!.pantry.name);
-    expect(markdown).toMatch(/not modelled|not simulated/i);
+  it("does not present a chosen existing pantry as a comparison site", () => {
+    expect(assessment.reference).toBeNull();
+    expect(markdown).not.toMatch(/compared against/i);
+    expect(markdown).toMatch(/published roster/i);
   });
 
   it("includes net new reach and the no-probability disclaimer", () => {
@@ -31,6 +33,21 @@ describe("action plan export", () => {
       markdown.includes(people.toLocaleString()) ||
         markdown.includes(String(people)),
     ).toBe(true);
+  });
+
+  it("writes a PDF that starts with the PDF header and keeps a sourced figure", () => {
+    const pdf = buildActionPlanPdf(markdown);
+    const text = new TextDecoder("latin1").decode(pdf);
+    expect(text.startsWith("%PDF-1.4")).toBe(true);
+    expect(text).toContain("%%EOF");
+    expect(text).toMatch(/PantryTwin action plan/);
+    const people = assessment.proposed.estimatedCatchmentPopulation.value;
+    if (people !== null) {
+      const rounded = Math.round(people).toLocaleString("en-US");
+      expect(text.includes(rounded) || text.includes(String(Math.round(people)))).toBe(
+        true,
+      );
+    }
   });
 
   it("lists sources with retrieval times", () => {

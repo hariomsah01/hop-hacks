@@ -10,67 +10,97 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  CircleHelp,
-  Info,
-  MapPinned,
-  ScrollText,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import type {
   Consequence,
   ScenarioName,
   SiteAssessmentResult,
 } from "@/lib/contracts";
 import { formatValue } from "@/lib/format";
-import {
-  MeasureValue,
-  MetricRow,
-  SectionTitle,
-  SideBySideRow,
-  StatusBadge,
-} from "./Measures";
+import { MeasureValue, MetricRow, StatusBadge } from "./Measures";
 
 const PROPOSED_COLOUR = "#c2410c";
 
-const SEVERITY_STYLE: Record<
-  Consequence["severity"],
-  { wrap: string; icon: typeof Info; iconClass: string }
-> = {
-  info: {
-    wrap: "border-[var(--color-hairline)] bg-white",
-    icon: Info,
-    iconClass: "text-[var(--color-teal-600)]",
-  },
-  watch: {
-    wrap: "border-amber-200 bg-amber-50",
-    icon: TriangleAlert,
-    iconClass: "text-amber-600",
-  },
-  gap: {
-    wrap: "border-slate-200 bg-slate-50",
-    icon: CircleHelp,
-    iconClass: "text-slate-500",
-  },
-};
+const HIDDEN_FINDINGS = new Set([
+  "no-reference",
+  "reference-capacity-unknown",
+  "demand-assumed",
+  "cost-per-household",
+  "newly-covered-tracts",
+  "service-rate",
+  "binding-constraint",
+  "no-binding-constraint",
+]);
 
-function ConsequenceCard({ consequence }: { consequence: Consequence }) {
-  const style = SEVERITY_STYLE[consequence.severity];
-  const Icon = style.icon;
+function formatRadiusKm(meters: number): string {
+  const km = meters / 1000;
+  return Number.isInteger(km) ? `${km} km` : `${km.toFixed(1)} km`;
+}
+
+function topConstraint(days: Record<string, number>): string {
+  const entries = Object.entries(days).filter(
+    ([key, count]) => key !== "none" && count > 0,
+  );
+  if (entries.length === 0) return "None";
+  entries.sort((a, b) => b[1] - a[1]);
+  const labels: Record<string, string> = {
+    staffing: "Volunteer hours",
+    supply: "Food on hand",
+    delivery: "Delivery",
+    demand: "Assumed demand",
+  };
+  const [name, count] = entries[0];
+  return `${labels[name] ?? name} · ${count} of 28 days`;
+}
+
+function glanceFindings(consequences: Consequence[]): Consequence[] {
+  return consequences
+    .filter((item) => !HIDDEN_FINDINGS.has(item.id))
+    .filter(
+      (item) => item.severity !== "info" || item.id === "outside-all-listings",
+    )
+    .slice(0, 3);
+}
+
+function FindingRow({
+  consequence,
+  open,
+  onToggle,
+}: {
+  consequence: Consequence;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const tone =
+    consequence.severity === "watch"
+      ? "text-amber-800"
+      : consequence.severity === "gap"
+        ? "text-[var(--color-navy-500)]"
+        : "text-[var(--color-navy-800)]";
   return (
-    <div className={`rounded-lg border p-2.5 ${style.wrap}`}>
-      <div className="flex gap-2">
-        <Icon size={14} className={`mt-0.5 shrink-0 ${style.iconClass}`} aria-hidden />
-        <div className="min-w-0">
-          <p className="text-xs font-semibold leading-snug text-[var(--color-navy-800)]">
-            {consequence.headline}
-          </p>
-          <p className="mt-1 text-[11px] leading-snug text-[var(--color-navy-500)]">
-            {consequence.detail}
-          </p>
-        </div>
-      </div>
+    <div className="border-b border-[var(--color-hairline)] last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-start gap-2 py-2 text-left"
+      >
+        <span className={`min-w-0 flex-1 text-xs font-medium leading-snug ${tone}`}>
+          {consequence.headline}
+        </span>
+        <ChevronDown
+          size={14}
+          className={`mt-0.5 shrink-0 text-[var(--color-navy-400)] transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        />
+      </button>
+      {open && (
+        <p className="pb-2 text-[11px] leading-snug text-[var(--color-navy-500)]">
+          {consequence.detail}
+        </p>
+      )}
     </div>
   );
 }
@@ -78,312 +108,274 @@ function ConsequenceCard({ consequence }: { consequence: Consequence }) {
 export default function FindingsPanel({
   assessment,
   loading,
-  onSelectReference,
-  onClearReference,
+  onClose,
 }: {
   assessment: SiteAssessmentResult | null;
   loading: boolean;
-  onSelectReference: (id: string) => void;
-  onClearReference: () => void;
+  onClose: () => void;
 }) {
   const [scenario, setScenario] = useState<ScenarioName>("medium");
+  const [openFinding, setOpenFinding] = useState<string | null>(null);
 
-  if (!assessment) {
-    return (
-      <div className="panel-scroll h-full overflow-y-auto bg-[var(--color-panel)] p-4">
-        <h2 className="text-sm font-semibold text-[var(--color-navy-800)]">
-          Analysis
-        </h2>
-        <p className="mt-2 text-xs text-[var(--color-navy-400)]">
-          {loading
-            ? "Running the analysis…"
-            : "Drag the orange pin to place your pantry."}
-        </p>
-      </div>
-    );
-  }
-
-  const { reach, reference, consequences } = assessment;
-  const bucket =
-    assessment.scenarios.find((s) => s.scenario === scenario) ??
-    assessment.scenarios[0];
-  const referenceName = reference?.pantry.name ?? null;
-
-  const chartData = assessment.scenarios.map((s) => ({
-    scenario: `${s.scenario[0].toUpperCase()}${s.scenario.slice(1)}`,
-    served: s.proposed.householdsServed.value ?? 0,
-  }));
-  const chartUnavailable = bucket.proposed.householdsServed.value === null;
+  const radiusLabel = assessment
+    ? formatRadiusKm(assessment.plan.catchmentRadiusMeters)
+    : null;
 
   return (
-    <div className="panel-scroll h-full overflow-y-auto bg-[var(--color-panel)] p-4">
-      <div className="mb-3 flex items-center gap-1.5">
-        <ScrollText size={15} className="text-[var(--color-teal-600)]" aria-hidden />
-        <h2 className="text-sm font-semibold text-[var(--color-navy-800)]">
-          Analysis
-        </h2>
-        {loading && (
-          <span className="ml-auto h-3 w-3 animate-spin rounded-full border-2 border-[var(--color-teal-600)] border-t-transparent" />
-        )}
-      </div>
-
-      {/* ------------------------------------------------- reference pantry */}
-      <section className="mb-4 rounded-lg border border-[var(--color-reference-600)]/30 bg-[var(--color-reference-100)]/50 p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-reference-600)]">
-              Compared against
-            </div>
-            {reference ? (
-              <>
-                <p className="truncate text-sm font-semibold text-[var(--color-navy-800)]">
-                  {reference.pantry.name}
-                </p>
-                <p className="text-[11px] text-[var(--color-navy-500)]">
-                  {reference.pantry.address ?? "address not published"} ·{" "}
-                  {reference.pantry.distanceMeters.toLocaleString("en-US")} m away
-                </p>
-              </>
-            ) : (
-              <div>
-                <p className="text-xs text-[var(--color-navy-500)]">
-                  Click a listed pantry on the map to compare.
-                </p>
-                {assessment.proposed.listedServices.length > 0 && (
-                  <ul className="mt-2 flex flex-col gap-1">
-                    {assessment.proposed.listedServices.slice(0, 4).map((svc) => (
-                      <li key={svc.id}>
-                        <button
-                          type="button"
-                          onClick={() => onSelectReference(svc.id)}
-                          className="w-full rounded-md border border-[var(--color-hairline)] bg-white px-2 py-1.5 text-left hover:border-[var(--color-reference-600)] hover:bg-white"
-                        >
-                          <span className="block truncate text-[11px] font-semibold text-[var(--color-navy-800)]">
-                            {svc.name}
-                          </span>
-                          <span className="text-[10px] text-[var(--color-navy-400)]">
-                            {svc.distanceMeters.toLocaleString("en-US")} m away
-                            {svc.address ? ` · ${svc.address}` : ""}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
-          {reference && (
-            <button
-              type="button"
-              onClick={onClearReference}
-              aria-label="Clear the selected pantry"
-              className="shrink-0 rounded p-1 text-[var(--color-navy-400)] hover:bg-white hover:text-[var(--color-navy-800)]"
-            >
-              <X size={14} aria-hidden />
-            </button>
+    <div className="flex h-full flex-col bg-[var(--color-panel)]">
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-hairline)] px-4 py-3">
+        <div className="min-w-0">
+          <h2
+            id="analysis-drawer-title"
+            className="text-sm font-semibold text-[var(--color-navy-800)]"
+          >
+            Statistics
+          </h2>
+          <p className="mt-0.5 text-[11px] text-[var(--color-navy-400)]">
+            {radiusLabel
+              ? `${radiusLabel} assumed straight-line ring`
+              : loading
+                ? "Running…"
+                : "Place the pin to read this site"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {loading && (
+            <span
+              className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--color-teal-600)] border-t-transparent"
+              aria-label="Updating statistics"
+            />
           )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-[var(--color-navy-400)] hover:bg-[var(--color-canvas)] hover:text-[var(--color-navy-800)]"
+          >
+            <X size={16} aria-hidden />
+            <span className="sr-only">Close statistics</span>
+          </button>
         </div>
-        {reference && (
-          <p className="mt-2 flex gap-1.5 text-[11px] leading-snug text-[var(--color-navy-500)]">
-            <CircleHelp size={12} className="mt-0.5 shrink-0" aria-hidden />
-            <span>
-              Location is published; capacity, staffing and current hours are
-              not, so its operations are not modelled.
-            </span>
-          </p>
-        )}
-      </section>
+      </header>
 
-      {/* ------------------------------------------------------ consequences */}
-      <section className="mb-4">
-        <SectionTitle>Report</SectionTitle>
-        <div className="flex flex-col gap-1.5">
-          {consequences
-            .filter((c) => c.id !== "no-reference")
-            .map((c) => (
-            <ConsequenceCard key={c.id} consequence={c} />
-          ))}
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------ reach */}
-      <section className="mb-4">
-        <SectionTitle>Reach</SectionTitle>
-
-        <div className="mb-2 rounded-lg border border-[var(--color-proposed-600)]/30 bg-[var(--color-proposed-100)]/60 px-3 py-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-proposed-600)]">
-              Net new reach
-            </span>
-            <StatusBadge measure={reach.netNewPopulation} />
-          </div>
-          <MeasureValue measure={reach.netNewPopulation} emphasis />
-          <p className="mt-0.5 text-[11px] leading-snug text-[var(--color-navy-500)]">
-            People newly inside this straight-line ring who are outside every
-            listed pantry&apos;s ring. Geography, not attendance.
-          </p>
-        </div>
-
-        <SideBySideRow
-          label="People in the catchment"
-          proposed={reach.proposedPopulation}
-          reference={reach.referencePopulation}
-          referenceName={referenceName}
-          hint="Area-weighted from census tracts. Do not add these together."
-        />
-        <MetricRow
-          label="Poverty rate in your catchment"
-          measure={assessment.proposed.povertyRate}
-        />
-        <MetricRow
-          label="Households without a vehicle"
-          measure={assessment.proposed.noVehicleHouseholdShare}
-        />
-        <MetricRow
-          label="Duplicated reach"
-          measure={reach.duplicatedPopulation}
-          hint={reach.overlap.note}
-        />
-        <MetricRow
-          label="Share of your catchment that is new ground"
-          measure={reach.netNewShare}
-        />
-        <MetricRow
-          label="People outside every listed pantry's ring"
-          measure={reach.populationOutsideAllListings}
-          hint="Published roster may be incomplete; a listing is not proof a site is open."
-        />
-
-        {reach.newlyCoveredTracts.length > 0 && (
-          <div className="mt-2 rounded-md bg-[var(--color-canvas)] p-2">
-            <div className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-[var(--color-navy-600)]">
-              <MapPinned size={11} aria-hidden /> Tracts gaining coverage
-            </div>
-            <ul className="flex flex-col gap-0.5">
-              {reach.newlyCoveredTracts.slice(0, 5).map((t) => (
-                <li
-                  key={t.geoid}
-                  className="flex items-baseline justify-between gap-2 text-[11px] text-[var(--color-navy-500)]"
-                >
-                  <span className="truncate">{t.name ?? t.geoid}</span>
-                  <span className="shrink-0 tabular-nums text-[var(--color-navy-800)]">
-                    {t.newPopulation === null
-                      ? "—"
-                      : `${Math.round(t.newPopulation).toLocaleString("en-US")} people`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      {/* -------------------------------------------------------- scenarios */}
-      <section className="mb-4">
-        <SectionTitle
-          trailing={
-            <div className="flex gap-0.5 rounded-md bg-[var(--color-canvas)] p-0.5">
-              {assessment.scenarios.map((s) => (
-                <button
-                  key={s.scenario}
-                  type="button"
-                  onClick={() => setScenario(s.scenario)}
-                  className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition ${
-                    s.scenario === scenario
-                      ? "bg-[var(--color-teal-600)] text-white"
-                      : "text-[var(--color-navy-500)] hover:bg-white"
-                  }`}
-                >
-                  {s.scenario}
-                </button>
-              ))}
-            </div>
-          }
-        >
-          Your pantry, 28 days
-        </SectionTitle>
-
-        <MetricRow
-          label="Assumed weekly requests"
-          measure={bucket.proposed.assumedWeeklyHouseholdRequests}
-        />
-        <MetricRow
-          label="Household visits served"
-          measure={bucket.proposed.householdsServed}
-        />
-        <MetricRow
-          label="Unmet requests"
-          measure={bucket.proposed.unmetRequests}
-        />
-        <MetricRow label="Service rate" measure={bucket.proposed.serviceRate} />
-        <MetricRow
-          label="Pounds spoiled"
-          measure={bucket.proposed.poundsSpoiled}
-        />
-        <MetricRow
-          label="Cost per household served"
-          measure={bucket.proposed.costPerHouseholdServed}
-        />
-
-        <div className="mt-2 rounded-md bg-[var(--color-canvas)] px-2 py-1.5 text-[11px] text-[var(--color-navy-500)]">
-          Limiting resource on service days:{" "}
-          <strong className="text-[var(--color-navy-800)]">
-            {topConstraint(bucket.proposed.bindingConstraintDays)}
-          </strong>
-        </div>
-      </section>
-
-      {/* ----------------------------------------------------------- chart */}
-      <section>
-        <SectionTitle>Household visits served by scenario</SectionTitle>
-        {chartUnavailable ? (
-          <p className="rounded-md bg-[var(--color-canvas)] p-3 text-[11px] italic text-[var(--color-status-unavailable)]">
-            Not charted: catchment population is unavailable, so served
-            households cannot be estimated.
+      <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {!assessment ? (
+          <p className="text-xs text-[var(--color-navy-400)]">
+            {loading
+              ? "Computing coverage and the 28-day plan…"
+              : "Drag the pin onto Baltimore City."}
           </p>
         ) : (
-          <div className="h-44 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5ecf2" vertical={false} />
-                <XAxis
-                  dataKey="scenario"
-                  tick={{ fontSize: 11, fill: "#3d5a7d" }}
-                  axisLine={{ stroke: "#dde5ec" }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#3d5a7d" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={52}
-                />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  formatter={(value) => formatValue(Number(value), "households")}
-                />
-                <Bar
-                  dataKey="served"
-                  name="Household visits served"
-                  fill={PROPOSED_COLOUR}
-                  radius={[3, 3, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <AnalysisBody
+            assessment={assessment}
+            scenario={scenario}
+            onScenario={setScenario}
+            openFinding={openFinding}
+            onToggleFinding={(id) =>
+              setOpenFinding((current) => (current === id ? null : id))
+            }
+          />
         )}
-      </section>
+      </div>
     </div>
   );
 }
 
-function topConstraint(days: Record<string, number>): string {
-  const entries = Object.entries(days).filter(
-    ([key, count]) => key !== "none" && count > 0,
+function AnalysisBody({
+  assessment,
+  scenario,
+  onScenario,
+  openFinding,
+  onToggleFinding,
+}: {
+  assessment: SiteAssessmentResult;
+  scenario: ScenarioName;
+  onScenario: (name: ScenarioName) => void;
+  openFinding: string | null;
+  onToggleFinding: (id: string) => void;
+}) {
+  const { reach } = assessment;
+  const glance = glanceFindings(assessment.consequences);
+  const bucket =
+    assessment.scenarios.find((item) => item.scenario === scenario) ??
+    assessment.scenarios[0];
+  const chartData = assessment.scenarios.map((item) => ({
+    scenario: `${item.scenario[0].toUpperCase()}${item.scenario.slice(1)}`,
+    served: item.proposed.householdsServed.value ?? 0,
+  }));
+  const chartUnavailable = bucket.proposed.householdsServed.value === null;
+
+  return (
+    <div className="flex flex-col gap-5">
+      {glance.length > 0 && (
+        <section>
+          <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-navy-400)]">
+            Findings
+          </h3>
+          <div>
+            {glance.map((item) => (
+              <FindingRow
+                key={item.id}
+                consequence={item}
+                open={openFinding === item.id}
+                onToggle={() => onToggleFinding(item.id)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-navy-400)]">
+          Coverage
+        </h3>
+        <div className="rounded-lg border border-[var(--color-hairline)] px-3">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--color-hairline)] py-2.5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-proposed-600)]">
+                Outside every listed ring
+              </p>
+              <p className="mt-0.5 text-[10px] text-[var(--color-navy-400)]">
+                New ground, not attendance
+              </p>
+            </div>
+            <div className="text-right">
+              <MeasureValue measure={reach.populationOutsideAllListings} emphasis />
+              <div className="mt-0.5 flex justify-end">
+                <StatusBadge measure={reach.populationOutsideAllListings} />
+              </div>
+            </div>
+          </div>
+          <MetricRow
+            compact
+            label="People in this ring"
+            measure={reach.proposedPopulation}
+          />
+          <MetricRow
+            compact
+            label="Already inside a listed ring"
+            measure={reach.duplicatedPopulation}
+          />
+          <MetricRow
+            compact
+            label="Listed services nearby"
+            measure={reach.nearbyListedServiceCount}
+          />
+          <MetricRow
+            compact
+            label="Poverty rate"
+            measure={assessment.proposed.povertyRate}
+          />
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-navy-400)]">
+            Plan
+          </h3>
+          <div className="flex gap-0.5 rounded-md bg-[var(--color-canvas)] p-0.5">
+            {assessment.scenarios.map((item) => (
+              <button
+                key={item.scenario}
+                type="button"
+                onClick={() => onScenario(item.scenario)}
+                className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition ${
+                  item.scenario === scenario
+                    ? "bg-[var(--color-teal-600)] text-white"
+                    : "text-[var(--color-navy-500)] hover:bg-white"
+                }`}
+              >
+                {item.scenario}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-[var(--color-hairline)] px-3">
+          <MetricRow
+            compact
+            label="Assumed weekly requests"
+            measure={bucket.proposed.assumedWeeklyHouseholdRequests}
+          />
+          <MetricRow
+            compact
+            label="Household visits served"
+            measure={bucket.proposed.householdsServed}
+          />
+          <MetricRow
+            compact
+            label="Unmet requests"
+            measure={bucket.proposed.unmetRequests}
+          />
+          <MetricRow compact label="Service rate" measure={bucket.proposed.serviceRate} />
+          <MetricRow
+            compact
+            label="Cost per household"
+            measure={bucket.proposed.costPerHouseholdServed}
+          />
+          <div className="flex items-center justify-between gap-3 py-2">
+            <span className="text-xs text-[var(--color-navy-600)]">Limit</span>
+            <span className="text-xs font-medium text-[var(--color-navy-800)]">
+              {topConstraint(bucket.proposed.bindingConstraintDays)}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <p className="mb-1 text-[11px] text-[var(--color-navy-400)]">
+            Visits served under each assumed demand
+          </p>
+          {chartUnavailable ? (
+            <p className="text-[11px] italic text-[var(--color-status-unavailable)]">
+              Not charted: catchment population is unavailable.
+            </p>
+          ) : (
+            <div className="h-36 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 4, right: 4, bottom: 0, left: -18 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#e5ecf2"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="scenario"
+                    tick={{ fontSize: 11, fill: "#3d5a7d" }}
+                    axisLine={{ stroke: "#dde5ec" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "#3d5a7d" }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={52}
+                  />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    formatter={(value) =>
+                      formatValue(Number(value), "households")
+                    }
+                  />
+                  <Bar
+                    dataKey="served"
+                    name="Served"
+                    fill={PROPOSED_COLOUR}
+                    radius={[3, 3, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <p className="text-[11px] leading-relaxed text-[var(--color-navy-400)]">
+        Demand is assumed across low, medium and high. Rings are straight-line,
+        not walking time. A listing is a published location, not hours or
+        capacity.
+      </p>
+    </div>
   );
-  if (entries.length === 0) return "none";
-  entries.sort((a, b) => b[1] - a[1]);
-  const [name, count] = entries[0];
-  return `${name} (${count} d)`;
 }
