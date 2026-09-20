@@ -63,6 +63,6 @@ export async function GET() {
       boundary,
       availability: data.availability,
     },
-    { headers: { "cache-control": "public, max-age=3600" } },
+    { headers: { "cache-control": "public, max-age=300" } },
   );
 }

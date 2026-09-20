@@ -130,6 +130,7 @@ export function computeReach(
 
   let netNew = 0;
   let duplicated = 0;
+  let listedDuplicated = 0;
   let outsideAll = 0;
   let tractsWithPopulation = 0;
   const newlyCovered: NewlyCoveredTract[] = [];
@@ -163,15 +164,18 @@ export function computeReach(
 
     netNew += newPopulation;
     duplicated += population * duplicatedShare;
+    listedDuplicated += population * coveredShare;
     outsideAll += population * outsideShare;
 
-    if (newShare > MIN_REPORTABLE_SHARE) {
+    const reportShare = reference === null ? outsideShare : newShare;
+    const reportPopulation = population * reportShare;
+    if (reportShare > MIN_REPORTABLE_SHARE) {
       newlyCovered.push({
         geoid: contribution.geoid,
         name: contribution.name,
         population,
-        newAreaShare: newShare,
-        newPopulation,
+        newAreaShare: reportShare,
+        newPopulation: reportPopulation,
       });
     }
   }
@@ -184,18 +188,16 @@ export function computeReach(
 
   const tractSources = ["tracts"];
 
+  const listedRosterNote =
+    "People inside this straight-line ring and outside every nearby listed service's ring. Each listing was given the same radius because no dataset states how far a real pantry draws from. Geography, not attendance.";
+
   const netNewPopulation = !hasPopulation
     ? unavailable(
         "people",
         "No intersecting tract reports population, so new reach cannot be separated from duplicated reach",
       )
     : reference === null
-      ? estimated(
-          netNew,
-          "people",
-          tractSources,
-          "No reference pantry selected, so the whole catchment is counted as new relative to nothing. Select a real pantry to see duplicated reach.",
-        )
+      ? estimated(outsideAll, "people", tractSources, listedRosterNote)
       : estimated(
           netNew,
           "people",
@@ -203,23 +205,21 @@ export function computeReach(
           "People inside the proposed ring and outside the reference pantry's ring, apportioned by tract area. Reach only: it does not mean these people would attend.",
         );
 
-  const duplicatedPopulation =
-    reference === null
-      ? unavailable(
+  const duplicatedPopulation = !hasPopulation
+    ? unavailable("people", "No intersecting tract reports population")
+    : reference === null
+      ? estimated(
+          listedDuplicated,
           "people",
-          "No reference pantry has been selected",
+          tractSources,
+          `People inside this ring who also sit inside at least one of ${nearbyCount} nearby listed services' rings. A listing is not proof a site is open.`,
         )
-      : !hasPopulation
-        ? unavailable(
-            "people",
-            "No intersecting tract reports population",
-          )
-        : estimated(
-            duplicated,
-            "people",
-            tractSources,
-            "People who can already reach the reference pantry. They must not be counted as coverage this site would add.",
-          );
+      : estimated(
+          duplicated,
+          "people",
+          tractSources,
+          "People who can already reach the reference pantry. They must not be counted as coverage this site would add.",
+        );
 
   const proposedValue = proposedPopulation.value;
   const netNewShare =
@@ -229,17 +229,22 @@ export function computeReach(
           "Requires a catchment population greater than zero",
         )
       : estimated(
-          netNew / proposedValue,
+          (reference === null ? outsideAll : netNew) / proposedValue,
           "share of proposed catchment",
           tractSources,
-          "Share of the proposed catchment that the reference pantry does not already reach",
+          reference === null
+            ? "Share of this ring that sits outside every nearby listed service's ring"
+            : "Share of the proposed catchment that the reference pantry does not already reach",
         );
 
   return {
     proposedPopulation,
     referencePopulation:
       reference?.estimatedCatchmentPopulation ??
-      unavailable("people", "No reference pantry has been selected"),
+      unavailable(
+        "people",
+        "This assessment does not use a chosen comparison pantry",
+      ),
     netNewPopulation,
     duplicatedPopulation,
     netNewShare,
@@ -263,12 +268,16 @@ export function computeReach(
     newlyCoveredTracts: newlyCovered,
     overlap: reference
       ? compareCatchments(proposed, reference)
-      : {
-          overlapAreaSqMeters: 0,
-          shareOfProposed: 0,
-          shareOfReference: 0,
-          sharedTractGeoids: [],
-          note: "No reference pantry has been selected, so there is nothing to overlap with.",
-        },
+      : (() => {
+          const proposedArea = turfArea(proposedRing);
+          const listedOverlapArea = coverage ? turfArea(coverage) : 0;
+          return {
+            overlapAreaSqMeters: listedOverlapArea,
+            shareOfProposed: proposedArea > 0 ? listedOverlapArea / proposedArea : 0,
+            shareOfReference: 0,
+            sharedTractGeoids: [],
+            note: "Overlap is measured against every listed service near this point, each given the same straight-line radius. No single pantry is treated as a comparison site.",
+          };
+        })(),
   };
 }

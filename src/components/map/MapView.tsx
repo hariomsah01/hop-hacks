@@ -11,28 +11,32 @@ import {
   type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Layers, LocateFixed, RotateCcw } from "lucide-react";
-import { BALTIMORE_CITY_BBOX, BALTIMORE_CITY_CENTER } from "@/lib/contracts";
+import {
+  BALTIMORE_CITY_BBOX,
+  BALTIMORE_CITY_CENTER,
+  type PlacementScore,
+} from "@/lib/contracts";
+import { mergePlacementIntoCollection } from "@/lib/geo/placement";
+import {
+  MARYLAND_FOOD_BANK_ORG_LABEL,
+  defaultSelectedServiceId,
+  idsToHighlight,
+  isMarylandFoodBankSite,
+  marylandFoodBankIds,
+} from "@/lib/orgs/marylandFoodBank";
 
 export interface SitePoint {
   lng: number;
   lat: number;
 }
 
-export interface ReferencePin {
-  id: string;
-  name: string;
-  lng: number;
-  lat: number;
-}
-
 interface MapViewProps {
   proposed: SitePoint;
-  reference: ReferencePin | null;
   catchmentRadiusMeters: number;
   onMoveProposed: (point: SitePoint) => void;
-  onSelectReference: (id: string | null) => void;
+  onChangeRadius: (meters: number) => void;
   onReset: () => void;
 }
 
@@ -79,9 +83,16 @@ const FALLBACK_STYLE: StyleSpecification = {
   ],
 };
 
-/** The proposal is orange; the real pantry it is measured against is purple. */
+/** The proposed pin and its straight-line catchment. */
 const PROPOSED_COLOUR = "#c2410c";
-const REFERENCE_COLOUR = "#5b3bc4";
+const LISTED_COLOUR = "#0f2540";
+const ORG_COLOUR = "#0f766e";
+const SELECTED_OUTLINE = "#111111";
+
+function formatRadiusKm(meters: number): string {
+  const km = meters / 1000;
+  return Number.isInteger(km) ? `${km} km` : `${km.toFixed(1)} km`;
+}
 
 /** Builds a great-circle ring so the drawn catchment matches the analysis. */
 function circleGeoJSON(
@@ -107,11 +118,6 @@ function circleGeoJSON(
   };
 }
 
-const EMPTY_COLLECTION: GeoJSON.FeatureCollection = {
-  type: "FeatureCollection",
-  features: [],
-};
-
 function buildProposedPin(): HTMLDivElement {
   const el = document.createElement("div");
   el.className = "pantry-pin";
@@ -119,28 +125,37 @@ function buildProposedPin(): HTMLDivElement {
   el.setAttribute("tabindex", "0");
   el.setAttribute("aria-label", "Proposed pantry site. Drag to move.");
   el.style.cssText = `
-    width: 34px; height: 34px; border-radius: 50% 50% 50% 8%;
-    transform: rotate(45deg);
+    width: 28px; height: 28px; border-radius: 50%;
     background: ${PROPOSED_COLOUR};
     border: 3px solid #ffffff;
     box-shadow: 0 4px 14px rgb(15 37 64 / 0.4);
     display: flex; align-items: center; justify-content: center;
     cursor: grab;
   `;
-  const text = document.createElement("span");
-  text.textContent = "+";
-  text.style.cssText =
-    "transform: rotate(-45deg); color: #fff; font-weight: 700; font-size: 20px; line-height: 1;";
-  el.appendChild(text);
+  const cross = document.createElement("span");
+  cross.setAttribute("aria-hidden", "true");
+  cross.style.cssText = "position: relative; width: 12px; height: 12px; display: block;";
+  const bar = (extra: string) => {
+    const piece = document.createElement("span");
+    piece.style.cssText = `
+      position: absolute; left: 50%; top: 50%;
+      background: #fff; border-radius: 1px;
+      transform: translate(-50%, -50%);
+      ${extra}
+    `;
+    return piece;
+  };
+  cross.appendChild(bar("width: 12px; height: 2px;"));
+  cross.appendChild(bar("width: 2px; height: 12px;"));
+  el.appendChild(cross);
   return el;
 }
 
 export default function MapView({
   proposed,
-  reference,
   catchmentRadiusMeters,
   onMoveProposed,
-  onSelectReference,
+  onChangeRadius,
   onReset,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -158,23 +173,26 @@ export default function MapView({
   const [error, setError] = useState<string | null>(null);
   const ready = styleEpoch > 0;
   const [layers, setLayers] = useState<LayerPayload | null>(null);
-  const [showTracts, setShowTracts] = useState(true);
+  const [showTracts, setShowTracts] = useState(false);
   const [showServices, setShowServices] = useState(true);
+  const [showPlacement, setShowPlacement] = useState(true);
+  const [placement, setPlacement] = useState<PlacementScore[] | null>(null);
+  const [placementLoading, setPlacementLoading] = useState(true);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
+    null,
+  );
+  const styledServiceIdsRef = useRef<Set<string>>(new Set());
 
   // Keep the latest callbacks without re-running the map setup effect.
   const onMoveRef = useRef(onMoveProposed);
-  const onSelectRef = useRef(onSelectReference);
-  const selectedIdRef = useRef<string | null>(reference?.id ?? null);
   useEffect(() => {
     onMoveRef.current = onMoveProposed;
-    onSelectRef.current = onSelectReference;
-    selectedIdRef.current = reference?.id ?? null;
-  }, [onMoveProposed, onSelectReference, reference]);
+  }, [onMoveProposed]);
 
   // ------------------------------------------------------------- load layers
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/layers")
+    fetch("/api/layers?v=placement-0.1.0")
       .then((res) => {
         if (!res.ok) throw new Error(`Layer request failed (${res.status})`);
         return res.json();
@@ -189,6 +207,67 @@ export default function MapView({
       cancelled = true;
     };
   }, []);
+
+  const orgIds = useMemo(
+    () => (layers ? marylandFoodBankIds(layers.services) : new Set<string>()),
+    [layers],
+  );
+
+  const selectedIsOrg =
+    selectedServiceId !== null && orgIds.has(selectedServiceId);
+
+  const selectedServiceName = useMemo(() => {
+    if (!layers || !selectedServiceId) return null;
+    for (const feature of layers.services.features) {
+      if (feature.properties?.id === selectedServiceId) {
+        return typeof feature.properties.name === "string"
+          ? feature.properties.name
+          : null;
+      }
+    }
+    return null;
+  }, [layers, selectedServiceId]);
+
+  useEffect(() => {
+    if (!layers || selectedServiceId) return;
+    const fallback = defaultSelectedServiceId(layers.services);
+    if (fallback) setSelectedServiceId(fallback);
+  }, [layers, selectedServiceId]);
+
+  // ---------------------------------------------- placement scores vs ring
+  useEffect(() => {
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      setPlacementLoading(true);
+      fetch(
+        `/api/placement?catchmentRadiusMeters=${catchmentRadiusMeters}`,
+      )
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`Placement request failed (${res.status})`);
+          }
+          return res.json() as Promise<{ tracts: PlacementScore[] }>;
+        })
+        .then((payload) => {
+          if (cancelled) return;
+          setPlacement(payload.tracts);
+          setError((current) =>
+            current?.startsWith("Could not score") ? null : current,
+          );
+        })
+        .catch((err: Error) => {
+          if (cancelled) return;
+          setError(`Could not score placement: ${err.message}`);
+        })
+        .finally(() => {
+          if (!cancelled) setPlacementLoading(false);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [catchmentRadiusMeters]);
 
   // ------------------------------------------------------------ create map
   useEffect(() => {
@@ -266,7 +345,10 @@ export default function MapView({
     if (!map || !ready || !layers) return;
 
     if (!map.getSource("tracts")) {
-      map.addSource("tracts", { type: "geojson", data: layers.tracts });
+      map.addSource("tracts", {
+        type: "geojson",
+        data: mergePlacementIntoCollection(layers.tracts, placement ?? []),
+      });
       map.addLayer({
         id: "tracts-fill",
         type: "fill",
@@ -275,8 +357,7 @@ export default function MapView({
           // Shaded by population density; tracts without population stay grey.
           "fill-color": [
             "case",
-            ["==", ["get", "densityPerSqKm"], null],
-            "#e5e7eb",
+            ["==", ["typeof", ["get", "densityPerSqKm"]], "number"],
             [
               "interpolate",
               ["linear"],
@@ -287,8 +368,37 @@ export default function MapView({
               9000, "#3fa9a3",
               15000, "#0b6b6b",
             ],
+            "#e5e7eb",
           ],
           "fill-opacity": 0.45,
+        },
+      });
+      map.addLayer({
+        id: "placement-fill",
+        type: "fill",
+        source: "tracts",
+        paint: {
+          "fill-color": [
+            "case",
+            ["==", ["typeof", ["get", "placementIndex"]], "number"],
+            [
+              "interpolate",
+              ["linear"],
+              ["get", "placementIndex"],
+              0, "#fff7ed",
+              25, "#fdba74",
+              50, "#f97316",
+              75, "#c2410c",
+              100, "#7c2d12",
+            ],
+            "#e5e7eb",
+          ],
+          "fill-opacity": [
+            "case",
+            ["==", ["typeof", ["get", "placementIndex"]], "number"],
+            ["interpolate", ["linear"], ["get", "placementIndex"], 0, 0.18, 100, 0.72],
+            0.2,
+          ],
         },
       });
       map.addLayer({
@@ -296,6 +406,61 @@ export default function MapView({
         type: "line",
         source: "tracts",
         paint: { "line-color": "#9fb3c4", "line-width": 0.5 },
+      });
+
+      const tractPopup = new Popup({ closeButton: false, offset: 12 });
+      const showTractPopup = (event: { lngLat: { lng: number; lat: number }; features?: Array<{ properties?: Record<string, unknown> }> }) => {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = event.features?.[0];
+        if (!feature) return;
+        const props = feature.properties ?? {};
+        const escape = (value: string) =>
+          value.replace(/[<>&]/g, (c) =>
+            c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;",
+          );
+        const label =
+          typeof props.name === "string" && props.name.length > 0
+            ? props.name
+            : "Census tract";
+        const index =
+          typeof props.placementIndex === "number" ? props.placementIndex : null;
+        const netNew =
+          typeof props.netNewPeople === "number" ? props.netNewPeople : null;
+        const poverty =
+          typeof props.povertyOnNewGround === "number"
+            ? props.povertyOnNewGround
+            : null;
+        const noVehicle =
+          typeof props.noVehicleOnNewGround === "number"
+            ? props.noVehicleOnNewGround
+            : null;
+        const covered =
+          typeof props.coveredShare === "number" ? props.coveredShare : null;
+        const figure = (value: number | null, suffix: string) =>
+          value === null ? "Unavailable" : `${value}${suffix}`;
+        const count = (value: number | null) =>
+          value === null ? "Unavailable" : value.toLocaleString("en-US");
+        tractPopup
+          .setLngLat(event.lngLat)
+          .setHTML(
+            `<strong style="color:#0f2540">${escape(label)}</strong><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Placement score: ${figure(index, " / 100")} <em>(estimated)</em></span><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Net new reach: ${count(netNew)} people <em>(estimated)</em></span><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Poverty on that ground: ${count(poverty)} people <em>(estimated)</em></span><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Households without a vehicle: ${count(noVehicle)} <em>(estimated)</em></span><br/>` +
+              `<span style="font-size:12px;color:#3d5a7d">Share of this tract already inside a listed ring: ${covered === null ? "Unavailable" : `${(covered * 100).toFixed(0)}%`} <em>(estimated)</em></span>`,
+          )
+          .addTo(map);
+      };
+      map.on("mouseenter", "placement-fill", showTractPopup);
+      map.on("mouseenter", "tracts-fill", showTractPopup);
+      map.on("mouseleave", "placement-fill", () => {
+        map.getCanvas().style.cursor = "";
+        tractPopup.remove();
+      });
+      map.on("mouseleave", "tracts-fill", () => {
+        map.getCanvas().style.cursor = "";
+        tractPopup.remove();
       });
     }
 
@@ -310,32 +475,62 @@ export default function MapView({
     }
 
     if (!map.getSource("services")) {
-      map.addSource("services", { type: "geojson", data: layers.services });
+      map.addSource("services", {
+        type: "geojson",
+        data: layers.services,
+        promoteId: "id",
+      });
       map.addLayer({
         id: "services-points",
         type: "circle",
         source: "services",
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 15, 7],
-          "circle-color": "#0f2540",
-          "circle-opacity": 0.75,
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 1,
-        },
-      });
-
-      // Drawn above the roster so the chosen pantry stays legible when
-      // listings sit on top of each other. The filter is set separately.
-      map.addLayer({
-        id: "services-selected",
-        type: "circle",
-        source: "services",
-        filter: ["==", ["get", "id"], "__none__"],
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 8, 15, 13],
-          "circle-color": REFERENCE_COLOUR,
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 3,
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            [
+              "case",
+              ["boolean", ["feature-state", "active"], false],
+              7,
+              ["boolean", ["feature-state", "org"], false],
+              6,
+              4,
+            ],
+            15,
+            [
+              "case",
+              ["boolean", ["feature-state", "active"], false],
+              11,
+              ["boolean", ["feature-state", "org"], false],
+              9,
+              7,
+            ],
+          ],
+          "circle-color": [
+            "case",
+            ["boolean", ["feature-state", "active"], false],
+            ORG_COLOUR,
+            ["boolean", ["feature-state", "org"], false],
+            ORG_COLOUR,
+            LISTED_COLOUR,
+          ],
+          "circle-opacity": 0.9,
+          "circle-stroke-color": [
+            "case",
+            ["boolean", ["feature-state", "active"], false],
+            SELECTED_OUTLINE,
+            "#ffffff",
+          ],
+          "circle-stroke-width": [
+            "case",
+            ["boolean", ["feature-state", "active"], false],
+            3,
+            ["boolean", ["feature-state", "org"], false],
+            2,
+            1,
+          ],
         },
       });
 
@@ -345,7 +540,6 @@ export default function MapView({
         const feature = event.features?.[0];
         if (!feature) return;
         const props = feature.properties as Record<string, string | null>;
-        const isSelected = props.id === selectedIdRef.current;
         // Publisher free text is escaped into the DOM as data, never markup.
         const escape = (value: string) =>
           value.replace(/[<>&]/g, (c) =>
@@ -354,17 +548,16 @@ export default function MapView({
         const notes = props.publishedHours
           ? `${escape(props.publishedHours)} <em>(publisher note, not verified)</em>`
           : "<em>no hours or capacity published</em>";
+        const orgLine = isMarylandFoodBankSite(props.name)
+            ? `<span style="font-size:12px;color:#0f766e">${escape(MARYLAND_FOOD_BANK_ORG_LABEL)}</span><br/>`
+            : "";
         popup
           .setLngLat(event.lngLat)
           .setHTML(
             `<strong style="color:#0f2540">${escape(props.name ?? "Listing")}</strong><br/>` +
+              orgLine +
               `<span style="font-size:12px;color:#3d5a7d">${escape(props.address ?? "address not published")}</span><br/>` +
-              `<span style="font-size:12px;color:#3d5a7d">${notes}</span><br/>` +
-              `<span style="font-size:12px;font-weight:600;color:${REFERENCE_COLOUR}">${
-                isSelected
-                  ? "Click to clear this comparison"
-                  : "Click to compare your site against this one"
-              }</span>`,
+              `<span style="font-size:12px;color:#3d5a7d">${notes}</span>`,
           )
           .addTo(map);
       });
@@ -372,41 +565,56 @@ export default function MapView({
         map.getCanvas().style.cursor = "";
         popup.remove();
       });
-
       map.on("click", "services-points", (event) => {
-        const props = event.features?.[0]?.properties as
-          | Record<string, string>
-          | undefined;
-        const id = props?.id;
-        if (!id) return;
-        // Clicking the chosen pantry again clears the comparison.
-        onSelectRef.current(id === selectedIdRef.current ? null : id);
+        const id = event.features?.[0]?.properties?.id;
+        if (typeof id === "string") setSelectedServiceId(id);
       });
     }
   }, [ready, layers, styleEpoch]);
 
-  // ------------------------------------------------- selected service marker
+  // ------------------------------------------ placement scores vs assumed ring
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready) return;
-    if (!map.getLayer("services-selected")) return;
-    map.setFilter("services-selected", [
-      "==",
-      ["get", "id"],
-      reference?.id ?? "__none__",
-    ]);
-  }, [ready, reference, layers, styleEpoch]);
+    if (!map || !ready || !layers) return;
+    const source = map.getSource("tracts") as GeoJSONSource | undefined;
+    if (!source) return;
+    source.setData(
+      mergePlacementIntoCollection(layers.tracts, placement ?? []),
+    );
+  }, [ready, layers, placement, styleEpoch]);
 
   // ------------------------------------------------------- layer visibility
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    for (const id of ["tracts-fill", "tracts-outline"]) {
-      if (map.getLayer(id)) {
-        map.setLayoutProperty(id, "visibility", showTracts ? "visible" : "none");
-      }
+    if (map.getLayer("tracts-fill")) {
+      map.setLayoutProperty(
+        "tracts-fill",
+        "visibility",
+        showTracts ? "visible" : "none",
+      );
     }
-  }, [ready, showTracts, layers, styleEpoch]);
+    const outlineOn = showTracts || showPlacement;
+    if (map.getLayer("tracts-outline")) {
+      map.setLayoutProperty(
+        "tracts-outline",
+        "visibility",
+        outlineOn ? "visible" : "none",
+      );
+    }
+  }, [ready, showTracts, showPlacement, layers, styleEpoch]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    if (map.getLayer("placement-fill")) {
+      map.setLayoutProperty(
+        "placement-fill",
+        "visibility",
+        showPlacement ? "visible" : "none",
+      );
+    }
+  }, [ready, showPlacement, layers, styleEpoch]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -420,16 +628,44 @@ export default function MapView({
     }
   }, [ready, showServices, layers, styleEpoch]);
 
+  // --------------------------------------------- selected pantry / org style
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !map.getSource("services")) return;
+
+    const previous = styledServiceIdsRef.current;
+    for (const id of previous) {
+      map.removeFeatureState({ source: "services", id });
+    }
+
+    const next = idsToHighlight(selectedServiceId, orgIds);
+    for (const id of next) {
+      map.setFeatureState(
+        { source: "services", id },
+        {
+          active: id === selectedServiceId,
+          org: selectedIsOrg && id !== selectedServiceId,
+        },
+      );
+    }
+    styledServiceIdsRef.current = next;
+  }, [ready, layers, selectedServiceId, orgIds, selectedIsOrg, styleEpoch]);
+
   // ------------------------------------------------------ proposed site pin
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
 
     const marker = proposedMarkerRef.current;
-    if (!marker) {
+    if (marker && marker.getElement().style.height !== "28px") {
+      marker.remove();
+      proposedMarkerRef.current = null;
+    }
+    if (!proposedMarkerRef.current) {
       const created = new Marker({
         element: buildProposedPin(),
         draggable: true,
+        anchor: "center",
       })
         .setLngLat([proposed.lng, proposed.lat])
         .addTo(map);
@@ -444,12 +680,13 @@ export default function MapView({
       return;
     }
 
-    const current = marker.getLngLat();
+    const currentMarker = proposedMarkerRef.current;
+    const current = currentMarker.getLngLat();
     if (
       Math.abs(current.lng - proposed.lng) > 1e-6 ||
       Math.abs(current.lat - proposed.lat) > 1e-6
     ) {
-      marker.setLngLat([proposed.lng, proposed.lat]);
+      currentMarker.setLngLat([proposed.lng, proposed.lat]);
     }
   }, [ready, proposed]);
 
@@ -460,17 +697,12 @@ export default function MapView({
     // required to attach a source.
     if (!map || !ready) return;
 
-    const rings: Array<[string, string, SitePoint | null]> = [
+    const rings: Array<[string, string, SitePoint]> = [
       ["catchment-proposed", PROPOSED_COLOUR, proposed],
-      ["catchment-reference", REFERENCE_COLOUR, reference],
     ];
 
     for (const [sourceId, colour, point] of rings) {
-      // An unselected reference draws an empty collection rather than being
-      // removed, so the layer ordering stays stable between renders.
-      const data = point
-        ? circleGeoJSON(point, catchmentRadiusMeters)
-        : EMPTY_COLLECTION;
+      const data = circleGeoJSON(point, catchmentRadiusMeters);
 
       const existing = map.getSource(sourceId) as GeoJSONSource | undefined;
       if (existing) {
@@ -495,7 +727,7 @@ export default function MapView({
         },
       });
     }
-  }, [ready, proposed, reference, catchmentRadiusMeters, styleEpoch]);
+  }, [ready, proposed, catchmentRadiusMeters, styleEpoch]);
 
   const recentre = useCallback(() => {
     mapRef.current?.fitBounds(
@@ -512,7 +744,7 @@ export default function MapView({
       <div ref={containerRef} className="h-full w-full" aria-label="Map of Baltimore City" />
 
       {/* Layer controls */}
-      <div className="absolute left-3 top-3 z-10 w-52 rounded-lg border border-[var(--color-hairline)] bg-white/95 p-2.5 shadow-sm backdrop-blur">
+      <div className="absolute left-3 top-3 z-10 w-56 rounded-lg border border-[var(--color-hairline)] bg-white/95 p-2.5 shadow-sm backdrop-blur">
         <div className="mb-1.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-navy-500)]">
             <Layers size={12} aria-hidden /> Layers
@@ -541,6 +773,15 @@ export default function MapView({
         <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
           <input
             type="checkbox"
+            checked={showPlacement}
+            onChange={(e) => setShowPlacement(e.target.checked)}
+            className="accent-[var(--color-teal-600)]"
+          />
+          Placement score
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
+          <input
+            type="checkbox"
             checked={showTracts}
             onChange={(e) => setShowTracts(e.target.checked)}
             className="accent-[var(--color-teal-600)]"
@@ -556,18 +797,101 @@ export default function MapView({
           />
           Listed pantries
         </label>
+        {showServices && (
+          <div className="mb-0.5 ml-5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!layers) return;
+                const fallback = defaultSelectedServiceId(layers.services);
+                if (fallback) setSelectedServiceId(fallback);
+              }}
+              aria-pressed={selectedIsOrg}
+              className={`rounded px-1.5 py-0.5 text-left text-[10px] leading-snug ${
+                selectedIsOrg
+                  ? "bg-[var(--color-teal-50)] font-medium text-[var(--color-teal-700)]"
+                  : "text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)] hover:text-[var(--color-navy-800)]"
+              }`}
+            >
+              {MARYLAND_FOOD_BANK_ORG_LABEL}
+            </button>
+            {selectedServiceName && (
+              <p className="px-1.5 text-[10px] leading-snug text-[var(--color-navy-500)]">
+                {selectedServiceName}
+              </p>
+            )}
+          </div>
+        )}
+        <div className="mt-2 border-t border-[var(--color-hairline)] pt-2">
+          <label className="flex items-baseline justify-between gap-2 text-[11px]">
+            <span className="font-medium text-[var(--color-navy-600)]">
+              Straight-line radius
+            </span>
+            <span className="tabular-nums text-[var(--color-navy-800)]">
+              {formatRadiusKm(catchmentRadiusMeters)}
+            </span>
+          </label>
+          <input
+            type="range"
+            min={200}
+            max={5000}
+            step={100}
+            value={catchmentRadiusMeters}
+            onChange={(e) => onChangeRadius(Number(e.target.value))}
+            className="mt-1 w-full"
+            aria-label="Straight-line catchment radius"
+          />
+          <p className="mt-0.5 text-[10px] leading-snug text-[var(--color-navy-400)]">
+            Assumed ring, not walking or drive time.
+          </p>
+        </div>
+        {showPlacement && (
+          <div className="mt-2 border-t border-[var(--color-hairline)] pt-2">
+            <p className="text-[10px] font-medium text-[var(--color-navy-600)]">
+              Placement score
+              {placementLoading ? " · updating" : ""}
+            </p>
+            <div
+              className="mt-1 h-2 rounded-full"
+              style={{
+                background:
+                  "linear-gradient(90deg, #fff7ed 0%, #fdba74 25%, #f97316 50%, #c2410c 75%, #7c2d12 100%)",
+              }}
+              aria-hidden
+            />
+            <div className="mt-0.5 flex justify-between text-[10px] text-[var(--color-navy-400)]">
+              <span>Lower</span>
+              <span>Higher</span>
+            </div>
+            <p className="mt-1 text-[10px] leading-snug text-[var(--color-navy-400)]">
+              Estimated if a pantry sat at the tract centre: net new people,
+              poverty on that new ground, and households without a vehicle,
+              equally weighted (assumed). Not attendance.
+            </p>
+          </div>
+        )}
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-[var(--color-hairline)] pt-2 text-[11px] text-[var(--color-navy-500)]">
           <span className="inline-flex items-center gap-1">
             <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: PROPOSED_COLOUR }} />
             Proposed
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: REFERENCE_COLOUR }} />
-            Compare
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: LISTED_COLOUR }} />
+            Listed
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#0f2540]" />
-            Listed
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: ORG_COLOUR }} />
+            {MARYLAND_FOOD_BANK_ORG_LABEL}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{
+                background: ORG_COLOUR,
+                boxShadow: `0 0 0 2px ${SELECTED_OUTLINE}`,
+              }}
+            />
+            Selected site
           </span>
         </div>
       </div>

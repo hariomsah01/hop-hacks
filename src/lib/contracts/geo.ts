@@ -3,6 +3,7 @@ import {
   DataCompletenessSchema,
   MeasureSchema,
   SourceRecordSchema,
+  ValueStatusSchema,
 } from "./common";
 import { LocationSchema } from "./planning";
 
@@ -96,3 +97,41 @@ export const CatchmentOverlapSchema = z.object({
   note: z.string(),
 });
 export type CatchmentOverlap = z.infer<typeof CatchmentOverlapSchema>;
+
+/**
+ * Rank of a census tract as a candidate pantry site. Estimated from net new
+ * reach, poverty on that new ground, and households without a vehicle.
+ * It is not a probability that a pantry would succeed.
+ */
+export const PlacementWeightsSchema = z.object({
+  netNewReach: z.number(),
+  povertyOnNewGround: z.number(),
+  noVehicleOnNewGround: z.number(),
+});
+export type PlacementWeights = z.infer<typeof PlacementWeightsSchema>;
+
+export const PlacementScoreSchema = z.object({
+  geoid: z.string(),
+  coveredShare: z.number().nullable(),
+  netNewPeople: z.number().nullable(),
+  povertyOnNewGround: z.number().nullable(),
+  noVehicleOnNewGround: z.number().nullable(),
+  placementIndex: z.number().nullable(),
+  status: ValueStatusSchema,
+  note: z.string(),
+});
+export type PlacementScore = z.infer<typeof PlacementScoreSchema>;
+
+export const PlacementIndexRequestSchema = z.object({
+  catchmentRadiusMeters: z.coerce.number().min(200).max(5000),
+});
+export type PlacementIndexRequest = z.infer<typeof PlacementIndexRequestSchema>;
+
+export const PlacementIndexResultSchema = z.object({
+  catchmentRadiusMeters: z.number(),
+  modelVersion: z.string(),
+  weights: PlacementWeightsSchema,
+  tracts: z.array(PlacementScoreSchema),
+  limitations: z.array(z.string()),
+});
+export type PlacementIndexResult = z.infer<typeof PlacementIndexResultSchema>;

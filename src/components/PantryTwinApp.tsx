@@ -4,32 +4,30 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChartColumn,
+  CircleHelp,
+  Download,
   MapPin,
-  Network,
-  PanelLeft,
   PanelRight,
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
 import {
   DEFAULT_OPERATING_PLAN,
-  type OperatingPlan,
   type SiteAssessmentRequest,
   type SiteAssessmentResult,
 } from "@/lib/contracts";
-import type { ReferencePin, SitePoint } from "@/components/map/MapView";
-import AboutMenu from "@/components/AboutMenu";
+import type { SitePoint } from "@/components/map/MapView";
+import AboutPanel from "@/components/AboutMenu";
 import AnalyticsView from "@/components/analytics/AnalyticsView";
-import ExportMenu from "@/components/ExportMenu";
+import ExportPanel from "@/components/ExportMenu";
 import StatusBar from "@/components/StatusBar";
-import NetworkTwin from "@/components/network/NetworkTwin";
 import ExplanationPanel, {
   type InspectorTab,
 } from "@/components/planning/ExplanationPanel";
 import FindingsPanel from "@/components/planning/FindingsPanel";
-import PlanPanel from "@/components/planning/PlanPanel";
 
 type AppView = "map" | "analytics";
+type SidePanel = "analysis" | "export" | "about" | null;
 
 /** MapLibre touches window on import, so the map is client-only. */
 const MapView = dynamic(() => import("@/components/map/MapView"), {
@@ -49,21 +47,28 @@ function PanelToggle({
   onClick,
   icon: Icon,
   label,
+  tone = "light",
 }: {
   pressed: boolean;
   onClick: () => void;
-  icon: typeof PanelLeft;
+  icon: typeof PanelRight;
   label: string;
+  tone?: "light" | "dark";
 }) {
+  const dark = tone === "dark";
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={pressed}
       className={`flex items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] font-medium transition ${
-        pressed
-          ? "border-[var(--color-teal-600)] bg-[var(--color-teal-50)] text-[var(--color-teal-700)]"
-          : "border-[var(--color-hairline)] text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)]"
+        dark
+          ? pressed
+            ? "border-[#ffb000] bg-[#ffb000] text-black"
+            : "border-[#2a3340] text-[#c5d0dc] hover:border-[#ffb000] hover:text-[#ffb000]"
+          : pressed
+            ? "border-[var(--color-teal-600)] bg-[var(--color-teal-50)] text-[var(--color-teal-700)]"
+            : "border-[var(--color-hairline)] text-[var(--color-navy-500)] hover:bg-[var(--color-teal-50)]"
       }`}
     >
       <Icon size={12} aria-hidden />
@@ -72,25 +77,36 @@ function PanelToggle({
   );
 }
 
+/** Analysis uses DEFAULT_OPERATING_PLAN; the Plan panel is not mounted. */
 export default function PantryTwinApp() {
   const [view, setView] = useState<AppView>("map");
-  const [mode, setMode] = useState<"planner" | "network">("planner");
   const [proposed, setProposed] = useState<SitePoint>(DEFAULT_PROPOSED);
-  const [referenceId, setReferenceId] = useState<string | null>(null);
-  const [plan, setPlan] = useState<OperatingPlan>(DEFAULT_OPERATING_PLAN);
+  const [radiusMeters, setRadiusMeters] = useState(
+    DEFAULT_OPERATING_PLAN.catchmentRadiusMeters,
+  );
+  const plan = useMemo(
+    () => ({
+      ...DEFAULT_OPERATING_PLAN,
+      catchmentRadiusMeters: radiusMeters,
+    }),
+    [radiusMeters],
+  );
   const [assessment, setAssessment] = useState<SiteAssessmentResult | null>(
     null,
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showPlan, setShowPlan] = useState(true);
-  const [showFindings, setShowFindings] = useState(true);
+  const [sidePanel, setSidePanel] = useState<SidePanel>(null);
   const [showAssistant, setShowAssistant] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("explanation");
 
+  const toggleSide = useCallback((panel: Exclude<SidePanel, null>) => {
+    setSidePanel((current) => (current === panel ? null : panel));
+  }, []);
+
   const request = useMemo<SiteAssessmentRequest>(
-    () => ({ proposed, referenceServiceId: referenceId, plan }),
-    [proposed, referenceId, plan],
+    () => ({ proposed, referenceServiceId: null, plan }),
+    [proposed, plan],
   );
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -137,35 +153,27 @@ export default function PantryTwinApp() {
     setProposed(point);
   }, []);
 
-  const handleSelectReference = useCallback((id: string | null) => {
-    setReferenceId(id);
-    if (id) setShowFindings(true);
-  }, []);
-
   const handleReset = useCallback(() => {
     setProposed(DEFAULT_PROPOSED);
-    setReferenceId(null);
+    setRadiusMeters(DEFAULT_OPERATING_PLAN.catchmentRadiusMeters);
   }, []);
+
+  useEffect(() => {
+    if (!sidePanel) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidePanel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidePanel]);
 
   const openSources = useCallback(() => {
     setInspectorTab("sources");
     setShowAssistant(true);
   }, []);
 
-  const referencePin: ReferencePin | null = useMemo(() => {
-    const pantry = assessment?.reference?.pantry;
-    if (!pantry || pantry.id !== referenceId) return null;
-    return {
-      id: pantry.id,
-      name: pantry.name,
-      lng: pantry.lng,
-      lat: pantry.lat,
-    };
-  }, [assessment, referenceId]);
-
   const outsideCity = assessment && !assessment.proposed.withinCityBoundary;
   const onMap = view === "map";
-  const planner = mode === "planner";
 
   return (
     <div className={`flex h-screen flex-col overflow-hidden ${onMap ? "" : "analytics-shell"}`}>
@@ -190,17 +198,11 @@ export default function PantryTwinApp() {
             >
               PantryTwin
             </h1>
-            <p
-              className={`truncate text-[11px] ${
-                onMap ? "text-[var(--color-navy-400)]" : "font-mono text-[#7d8b9a]"
-              }`}
-            >
-              {!onMap
-                ? "Predicted baseline and new-location scenarios"
-                : planner
-                  ? "Baltimore City pantry siting"
-                  : "Baltimore City pantry network"}
-            </p>
+            {!onMap && (
+              <p className="truncate font-mono text-[11px] text-[#7d8b9a]">
+                Predicted baseline and new-location scenarios
+              </p>
+            )}
           </div>
         </div>
 
@@ -247,168 +249,143 @@ export default function PantryTwinApp() {
           </button>
         </div>
 
-        {onMap && (
-          <div
-            className="flex rounded-lg border border-[var(--color-hairline)] bg-[var(--color-canvas)] p-0.5"
-            role="tablist"
-            aria-label="PantryTwin mode"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={planner}
-              onClick={() => setMode("planner")}
-              className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
-                planner
-                  ? "bg-white text-[var(--color-teal-700)] shadow-sm"
-                  : "text-[var(--color-navy-500)] hover:text-[var(--color-navy-800)]"
-              }`}
-            >
-              <MapPin size={12} aria-hidden />
-              Site planner
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={!planner}
-              onClick={() => setMode("network")}
-              className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
-                !planner
-                  ? "bg-white text-[var(--color-reference-600)] shadow-sm"
-                  : "text-[var(--color-navy-500)] hover:text-[var(--color-navy-800)]"
-              }`}
-            >
-              <Network size={12} aria-hidden />
-              Network twin
-            </button>
-          </div>
-        )}
-
         <div className="ml-auto flex items-center gap-2">
-          {onMap && planner && outsideCity && (
+          {onMap && outsideCity && (
             <span className="hidden items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900 sm:flex">
               <TriangleAlert size={12} aria-hidden />
               Outside city
             </span>
           )}
-          {onMap && planner && error && (
+          {onMap && error && (
             <span className="hidden max-w-48 truncate items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-medium text-red-800 md:flex">
               <TriangleAlert size={12} aria-hidden />
               {error}
             </span>
           )}
-          {onMap && planner && (
-            <div className="flex gap-1">
-              <PanelToggle
-                pressed={showPlan}
-                onClick={() => setShowPlan((v) => !v)}
-                icon={PanelLeft}
-                label="Plan"
-              />
-              <PanelToggle
-                pressed={showFindings}
-                onClick={() => setShowFindings((v) => !v)}
-                icon={PanelRight}
-                label="Analysis"
-              />
-              <PanelToggle
-                pressed={showAssistant}
-                onClick={() => setShowAssistant((v) => !v)}
-                icon={Sparkles}
-                label="Ask"
-              />
-            </div>
-          )}
-          {onMap && planner && (
-            <ExportMenu request={request} disabled={!assessment} />
-          )}
-          <AboutMenu tone={onMap ? "light" : "dark"} />
+          <div className="flex gap-1">
+            {onMap && (
+              <>
+                <PanelToggle
+                  pressed={sidePanel === "analysis"}
+                  onClick={() => toggleSide("analysis")}
+                  icon={PanelRight}
+                  label="Statistics"
+                />
+                <PanelToggle
+                  pressed={showAssistant}
+                  onClick={() => setShowAssistant((v) => !v)}
+                  icon={Sparkles}
+                  label="Ask"
+                />
+                <PanelToggle
+                  pressed={sidePanel === "export"}
+                  onClick={() => toggleSide("export")}
+                  icon={Download}
+                  label="Export"
+                />
+              </>
+            )}
+            <PanelToggle
+              pressed={sidePanel === "about"}
+              onClick={() => toggleSide("about")}
+              icon={CircleHelp}
+              label="About"
+              tone={onMap ? "light" : "dark"}
+            />
+          </div>
         </div>
       </header>
 
-      {onMap ? (
-        <div
-          id="view-panel-map"
-          role="tabpanel"
-          aria-labelledby="view-tab-map"
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          {mode === "network" ? (
-            <div className="min-h-0 flex-1">
-              <NetworkTwin />
-            </div>
-          ) : (
-            <>
-              <div className="flex min-h-0 flex-1">
-                <aside
-                  className={`${showPlan ? "block" : "hidden"} w-72 shrink-0 border-r border-[var(--color-hairline)]`}
-                >
-                  <PlanPanel
-                    plan={plan}
-                    onChange={setPlan}
-                    onResetPlan={() => setPlan(DEFAULT_OPERATING_PLAN)}
+      <div className="relative min-h-0 flex-1">
+        {onMap ? (
+          <div
+            id="view-panel-map"
+            role="tabpanel"
+            aria-labelledby="view-tab-map"
+            className="flex h-full min-h-0 flex-col"
+          >
+            <div className="flex min-h-0 flex-1">
+              <main className="flex min-w-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1">
+                  <MapView
+                    proposed={proposed}
+                    catchmentRadiusMeters={plan.catchmentRadiusMeters}
+                    onMoveProposed={handleMove}
+                    onChangeRadius={setRadiusMeters}
+                    onReset={handleReset}
                   />
-                </aside>
-
-                <main className="flex min-w-0 flex-1 flex-col">
-                  <div className="min-h-0 flex-1">
-                    <MapView
-                      proposed={proposed}
-                      reference={referencePin}
-                      catchmentRadiusMeters={plan.catchmentRadiusMeters}
-                      onMoveProposed={handleMove}
-                      onSelectReference={handleSelectReference}
-                      onReset={handleReset}
+                </div>
+                {showAssistant && (
+                  <div className="h-[min(32rem,54vh)] shrink-0 overflow-hidden border-t border-[var(--color-hairline)]">
+                    <ExplanationPanel
+                      assessment={assessment}
+                      request={request}
+                      tab={inspectorTab}
+                      onTabChange={setInspectorTab}
                     />
                   </div>
-                  {showAssistant && (
-                    <div className="h-64 shrink-0 border-t border-[var(--color-hairline)]">
-                      <ExplanationPanel
-                        assessment={assessment}
-                        request={request}
-                        tab={inspectorTab}
-                        onTabChange={setInspectorTab}
-                      />
-                    </div>
-                  )}
-                </main>
+                )}
+              </main>
+            </div>
+            <StatusBar
+              lat={proposed.lat}
+              lng={proposed.lng}
+              catchmentRadiusMeters={plan.catchmentRadiusMeters}
+              assessment={assessment}
+              loading={loading}
+              onOpenSources={openSources}
+            />
+          </div>
+        ) : (
+          <div
+            id="view-panel-analytics"
+            role="tabpanel"
+            aria-labelledby="view-tab-analytics"
+            className="h-full min-h-0"
+          >
+            <AnalyticsView
+              proposed={proposed}
+              catchmentRadiusMeters={plan.catchmentRadiusMeters}
+            />
+          </div>
+        )}
 
-                <aside
-                  className={`${showFindings ? "block" : "hidden"} w-80 shrink-0 border-l border-[var(--color-hairline)]`}
-                >
-                  <FindingsPanel
-                    assessment={assessment}
-                    loading={loading}
-                    onSelectReference={(id) => handleSelectReference(id)}
-                    onClearReference={() => setReferenceId(null)}
-                  />
-                </aside>
-              </div>
-
-              <StatusBar
-                lat={proposed.lat}
-                lng={proposed.lng}
-                catchmentRadiusMeters={plan.catchmentRadiusMeters}
-                assessment={assessment}
-                loading={loading}
-                onOpenSources={openSources}
-              />
-            </>
-          )}
-        </div>
-      ) : (
-        <div
-          id="view-panel-analytics"
-          role="tabpanel"
-          aria-labelledby="view-tab-analytics"
-          className="min-h-0 flex-1"
+        <aside
+          id="side-drawer"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby={
+            sidePanel === "export"
+              ? "export-drawer-title"
+              : sidePanel === "about"
+                ? "about-drawer-title"
+                : "analysis-drawer-title"
+          }
+          aria-hidden={!sidePanel}
+          inert={!sidePanel}
+          className={`absolute inset-y-0 right-0 z-20 flex w-[22.5rem] max-w-full flex-col border-l border-[var(--color-hairline)] bg-[var(--color-panel)] shadow-[-12px_0_32px_rgb(15_37_64_/_0.12)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
+            sidePanel
+              ? "translate-x-0 pointer-events-auto"
+              : "translate-x-full pointer-events-none"
+          }`}
         >
-          <AnalyticsView
-            proposed={proposed}
-            catchmentRadiusMeters={plan.catchmentRadiusMeters}
-          />
-        </div>
-      )}
+          {sidePanel === "export" ? (
+            <ExportPanel
+              request={request}
+              disabled={!assessment}
+              onClose={() => setSidePanel(null)}
+            />
+          ) : sidePanel === "about" ? (
+            <AboutPanel onClose={() => setSidePanel(null)} />
+          ) : (
+            <FindingsPanel
+              assessment={assessment}
+              loading={loading}
+              onClose={() => setSidePanel(null)}
+            />
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

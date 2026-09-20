@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { GEO_MODEL_VERSION, SIM_MODEL_VERSION } from "@/lib/contracts";
+import {
+  GEO_MODEL_VERSION,
+  PLACEMENT_MODEL_VERSION,
+  SIM_MODEL_VERSION,
+} from "@/lib/contracts";
 import { loadDatasets } from "@/lib/data/datasets";
 import { isAssistantConfigured } from "@/lib/ai/gemini";
 
@@ -26,7 +30,11 @@ export function GET() {
         tractPoverty: data.availability.tractPoverty,
       },
       assistantConfigured: isAssistantConfigured(),
-      modelVersions: { geo: GEO_MODEL_VERSION, simulation: SIM_MODEL_VERSION },
+      modelVersions: {
+        geo: GEO_MODEL_VERSION,
+        simulation: SIM_MODEL_VERSION,
+        placement: PLACEMENT_MODEL_VERSION,
+      },
     },
     { status: ready ? 200 : 503 },
   );

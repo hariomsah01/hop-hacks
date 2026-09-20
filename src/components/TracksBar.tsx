@@ -1,16 +1,21 @@
 /**
  * Prize targets for HopHacks Fall 2026.
  *
- * One track only (Bloomberg philanthropy). Branded prizes are listed only when
- * the app actually uses that sponsor. ElevenLabs, Backboard and GoDaddy stay
- * off this list until those features exist.
+ * Tracks and branded prizes the app is aimed at. Listed only when the product
+ * uses that sponsor or fits that track.
  */
 export const TARGETED_PRIZES = [
   {
     id: "bloomberg",
     kind: "track" as const,
     label: "Bloomberg Philanthropy",
-    detail: "Most Philanthropic Hack — our only track",
+    detail: "Most Philanthropic Hack",
+  },
+  {
+    id: "opef",
+    kind: "prize" as const,
+    label: "OPEF Environmental Intelligence",
+    detail: "OPEF Environmental Intelligence Track",
   },
   {
     id: "gemini",
