@@ -5,10 +5,10 @@ import { buildAnalyticsSimulation } from "@/lib/analytics/simulate";
 export const dynamic = "force-dynamic";
 
 /**
- * Baseline vs new-location series for the Analytics tab.
- *
- * The UI is wired to this response shape. Swap `buildAnalyticsSimulation`
- * for the real model when it is ready.
+ * Baseline vs selected-location scenario for the Analytics tab.
+ * Organization history is forecast with ridge regression, then attributed to
+ * the Map-tab catchment. Expansion adds one site's throughput at that pin,
+ * scaled by crowding, poverty, and people with no nearby listing.
  */
 export async function POST(request: Request) {
   let body: unknown;

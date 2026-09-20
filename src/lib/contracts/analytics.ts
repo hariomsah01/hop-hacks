@@ -16,8 +16,11 @@ export const AnalyticsPeriodSchema = z.object({
   clients: z.number(),
   households: z.number(),
   staff: z.number(),
-  /** Share of people who are food-insecure, 0–100. */
-  foodInsecurityPercent: z.number(),
+  /**
+   * Pounds of citywide food still sitting on this ring after current listings
+   * take an equal share. Expansion adds a listing, so the gap falls.
+   */
+  foodAccessGapLb: z.number(),
 });
 export type AnalyticsPeriod = z.infer<typeof AnalyticsPeriodSchema>;
 

@@ -305,8 +305,8 @@ export default function PantryTwinApp() {
             className="flex h-full min-h-0 flex-col"
           >
             <div className="flex min-h-0 flex-1">
-              <main className="flex min-w-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1">
+              <main className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden">
+                <div className="min-h-0 flex-1 overflow-hidden">
                   <MapView
                     proposed={proposed}
                     catchmentRadiusMeters={plan.catchmentRadiusMeters}
@@ -316,7 +316,7 @@ export default function PantryTwinApp() {
                   />
                 </div>
                 {showAssistant && (
-                  <div className="h-[min(32rem,54vh)] shrink-0 overflow-hidden border-t border-[var(--color-hairline)]">
+                  <div className="relative z-30 h-[min(32rem,54vh)] shrink-0 overflow-hidden border-t border-[var(--color-hairline)] bg-[var(--color-panel)]">
                     <ExplanationPanel
                       assessment={assessment}
                       request={request}
@@ -363,7 +363,11 @@ export default function PantryTwinApp() {
           }
           aria-hidden={!sidePanel}
           inert={!sidePanel}
-          className={`absolute inset-y-0 right-0 z-20 flex w-[22.5rem] max-w-full flex-col border-l border-[var(--color-hairline)] bg-[var(--color-panel)] shadow-[-12px_0_32px_rgb(15_37_64_/_0.12)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
+          className={`absolute inset-y-0 right-0 z-20 flex w-[22.5rem] max-w-full flex-col border-l transition-transform duration-300 ease-out motion-reduce:transition-none ${
+            onMap
+              ? "border-[var(--color-hairline)] bg-[var(--color-panel)] shadow-[-12px_0_32px_rgb(15_37_64_/_0.12)]"
+              : "border-[#1c2430] bg-[#0d1117] shadow-[-12px_0_32px_rgb(0_0_0_/_0.45)]"
+          } ${
             sidePanel
               ? "translate-x-0 pointer-events-auto"
               : "translate-x-full pointer-events-none"
@@ -376,7 +380,10 @@ export default function PantryTwinApp() {
               onClose={() => setSidePanel(null)}
             />
           ) : sidePanel === "about" ? (
-            <AboutPanel onClose={() => setSidePanel(null)} />
+            <AboutPanel
+              onClose={() => setSidePanel(null)}
+              tone={onMap ? "light" : "dark"}
+            />
           ) : (
             <FindingsPanel
               assessment={assessment}
